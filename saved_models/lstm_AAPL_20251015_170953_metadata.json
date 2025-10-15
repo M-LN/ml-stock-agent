@@ -1,0 +1,20 @@
+{
+  "model_type": "lstm",
+  "symbol": "AAPL",
+  "timestamp": "20251015_170953",
+  "metadata": {
+    "window": 30,
+    "epochs": 20,
+    "horizon": 5,
+    "train_mae": 9.53263493355988,
+    "train_rmse": 12.109039540695202,
+    "val_mae": 14.187637329101564,
+    "val_rmse": 15.891872203841938,
+    "training_samples": 173,
+    "validation_samples": 44,
+    "data_period": "2024-10-15 00:00:00-04:00 to 2025-10-15 00:00:00-04:00",
+    "scaler_min": 171.9989776611328,
+    "scaler_max": 258.1037292480469
+  },
+  "deployed": false
+}

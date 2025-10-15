@@ -1,0 +1,18 @@
+{
+  "model_type": "prophet",
+  "symbol": "AAPL",
+  "timestamp": "20251012_213104",
+  "metadata": {
+    "horizon": 5,
+    "daily_seasonality": true,
+    "weekly_seasonality": true,
+    "train_mae": 6.2332709209291695,
+    "train_rmse": 8.06834045378034,
+    "val_mae": 5.4501328037369765,
+    "val_rmse": 6.694335393494255,
+    "training_samples": 200,
+    "validation_samples": 50,
+    "data_period": "2024-10-11 00:00:00 to 2025-10-10 00:00:00"
+  },
+  "deployed": false
+}

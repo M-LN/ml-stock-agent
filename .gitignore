@@ -1,0 +1,41 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+
+# Virtual environments
+venv/
+.venv/
+env/
+ENV/
+venv311/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Data & logs
+*.csv
+*.log
+analyse_log.json
+watchlist.json
+
+# ML models (keep architecture, ignore trained weights)
+saved_models/*.h5
+saved_models/*.pkl
+
+# Secrets (VIGTIGT!)
+.env
+.streamlit/secrets.toml
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Streamlit secrets (IMPORTANT - contains API keys)
+.streamlit/secrets.toml
+secrets.toml

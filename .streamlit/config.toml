@@ -1,0 +1,16 @@
+[theme]
+# Custom Dark Theme for ML Stock Agent
+primaryColor = "#FF4B4B"              # Red accent color for buttons/highlights
+backgroundColor = "#0E1117"           # Main dark background
+secondaryBackgroundColor = "#262730"  # Lighter background for cards/components
+textColor = "#FAFAFA"                 # White text
+font = "sans serif"
+
+[server]
+# Server configuration
+headless = true
+port = 8501
+
+[browser]
+# Browser configuration
+gatherUsageStats = false

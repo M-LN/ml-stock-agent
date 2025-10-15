@@ -1,0 +1,20 @@
+{
+  "model_type": "xgboost",
+  "symbol": "AAPL",
+  "timestamp": "20251012_213104",
+  "metadata": {
+    "n_estimators": 50,
+    "max_depth": 6,
+    "learning_rate": 0.1,
+    "window": 30,
+    "horizon": 5,
+    "train_mae": 0.412042218585347,
+    "train_rmse": 0.6991966366281548,
+    "val_mae": 9.72597885131836,
+    "val_rmse": 12.455876419704754,
+    "training_samples": 172,
+    "validation_samples": 44,
+    "data_period": "2024-10-11 00:00:00 to 2025-10-10 00:00:00"
+  },
+  "deployed": false
+}

@@ -1,0 +1,19 @@
+{
+  "model_type": "rf",
+  "symbol": "AAPL",
+  "timestamp": "20251015_170334",
+  "metadata": {
+    "n_estimators": 150,
+    "max_depth": 15,
+    "window": 20,
+    "horizon": 5,
+    "train_mae": 1.8290528926111718,
+    "train_rmse": 2.6263574535801775,
+    "val_mae": 8.12848526222118,
+    "val_rmse": 10.727689959276018,
+    "training_samples": 181,
+    "validation_samples": 46,
+    "data_period": "2024-10-15 00:00:00 to 2025-10-15 00:00:00"
+  },
+  "deployed": true
+}

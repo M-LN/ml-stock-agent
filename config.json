@@ -1,0 +1,48 @@
+{
+  "default_settings": {
+    "data_period": "6mo",
+    "data_interval": "1d",
+    "ml_window": 30,
+    "ml_epochs": 3,
+    "rsi_period": 14,
+    "sma_short": 50,
+    "sma_long": 200,
+    "macd_fast": 12,
+    "macd_slow": 26,
+    "macd_signal": 9,
+    "bb_period": 20,
+    "bb_std": 2,
+    "atr_period": 14
+  },
+  "enabled_indicators": {
+    "rsi": true,
+    "sma": true,
+    "macd": true,
+    "bollinger_bands": true,
+    "atr": true
+  },
+  "watchlist": [
+    "AAPL",
+    "MSFT",
+    "GOOGL",
+    "TSLA",
+    "NVDA"
+  ],
+  "reflection_questions": {
+    "analyse": [
+      "Vil du bruge dette som et konkret signal, eller som læring til at forstå markedets dynamik?",
+      "Hvilke faktorer kunne påvirke denne analyse?",
+      "Hvordan matcher denne analyse med den fundamentale vurdering?"
+    ],
+    "laer": [
+      "Skal vi dykke dybere i en anden indikator?",
+      "Vil du se, hvordan RSI spiller sammen med en ML‑model?",
+      "Forstår du, hvorfor denne indikator reagerer som den gør?"
+    ],
+    "ml": [
+      "Vil du bruge forecastet som et handels‑signal, eller som en øvelse?",
+      "Hvad er begrænsningerne ved denne model?",
+      "Hvordan kunne du forbedre denne forecast?"
+    ]
+  }
+}
