@@ -777,9 +777,15 @@ with tab4:
                         st.markdown("### 📈 Performance Metrics")
                         metrics = result.get("metrics", {})
                         col1, col2, col3 = st.columns(3)
-                        col1.metric("MAE", f"{metrics.get('mae', 0):.2f}")
-                        col2.metric("RMSE", f"{metrics.get('rmse', 0):.2f}")
-                        col3.metric("R² Score", f"{metrics.get('r2', 0):.3f}")
+                        
+                        # Handle None values in metrics
+                        mae_val = metrics.get('mae')
+                        rmse_val = metrics.get('rmse')
+                        r2_val = metrics.get('r2')
+                        
+                        col1.metric("MAE", f"{mae_val:.2f}" if mae_val is not None else "N/A")
+                        col2.metric("RMSE", f"{rmse_val:.2f}" if rmse_val is not None else "N/A")
+                        col3.metric("R² Score", f"{r2_val:.3f}" if r2_val is not None else "N/A")
                         
                         st.divider()
                         
