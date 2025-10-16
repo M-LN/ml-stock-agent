@@ -10,6 +10,7 @@ from datetime import datetime
 from dotenv import load_dotenv
 import requests
 import time
+from storage_manager import get_stock_data_cached, get_stock_info_cached
 
 # Load environment variables from .env file
 load_dotenv()

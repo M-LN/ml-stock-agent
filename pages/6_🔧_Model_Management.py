@@ -17,6 +17,7 @@ from agent_interactive import (
     calculate_model_metrics,
     MODEL_DIR
 )
+from storage_manager import StorageManager, get_stock_data_cached, clear_all_caches
 
 st.set_page_config(page_title="Model Management", page_icon="🔧", layout="wide")
 
@@ -33,6 +34,61 @@ if deployed_models:
             st.markdown(f"- **{m['model_type'].upper()}** ({m['symbol']}) - {m['timestamp'][:8]}")
 else:
     st.info("💡 Ingen deployed modeller. Træn og deploy modeller for at bruge dem i forecasts og agent.")
+
+st.divider()
+
+# ==================== STORAGE & CACHE SETTINGS ====================
+with st.expander("⚙️ Storage & Cache Settings"):
+    col1, col2, col3 = st.columns(3)
+    
+    with col1:
+        st.markdown("### 💾 Model Storage")
+        storage_type = st.selectbox(
+            "Storage Backend",
+            ["local", "github"],
+            help="Local: Ephemeral (modeller forsvinder ved redeploy)\nGitHub: Persistent via private Gists"
+        )
+        
+        if storage_type == "github":
+            if "GITHUB_TOKEN" in st.secrets:
+                st.success("✅ GitHub token configured")
+            else:
+                st.warning("⚠️ Add GITHUB_TOKEN to secrets for persistent storage")
+                st.markdown("""
+                **Setup:**
+                1. Create GitHub Personal Access Token with `gist` scope
+                2. Add to Streamlit secrets: `GITHUB_TOKEN = "your_token"`
+                """)
+        else:
+            st.info("📁 Using local storage (ephemeral)")
+    
+    with col2:
+        st.markdown("### 🚀 Cache Status")
+        st.markdown("Caching reduces API calls to Yahoo Finance and NewsAPI")
+        
+        if st.button("🗑️ Clear All Caches", help="Clear cached stock data and news"):
+            clear_all_caches()
+        
+        st.markdown("""
+        **Cache TTL:**
+        - Stock data: 1 hour
+        - Stock info: 30 minutes
+        - News: 1 hour
+        """)
+    
+    with col3:
+        st.markdown("### 📊 Storage Info")
+        model_count = len(all_models)
+        st.metric("Saved Models", model_count)
+        st.metric("Deployed Models", len(deployed_models))
+        
+        if storage_type == "local":
+            st.caption("⚠️ Models will be lost on redeploy")
+        else:
+            st.caption("✅ Models persist across deploys")
+
+# Initialize storage manager
+storage_manager = StorageManager(storage_type=storage_type)
 
 st.divider()
 
