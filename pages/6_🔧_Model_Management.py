@@ -755,12 +755,19 @@ with tab4:
                 )
                 llm_model = st.selectbox("LLM Model", ["gpt-4o-mini", "gpt-4o", "gpt-4"])
             
+            # Initialize session state for retrain results
+            if 'retrain_results' not in st.session_state:
+                st.session_state.retrain_results = {}
+            
             # Analyze button
             if st.button("🔍 Analyze Model", type="primary"):
                 with st.spinner("Analyserer model..."):
                     result = analyze_saved_model(selected_model_id, api_key if api_key else None, llm_model)
+                    st.session_state.analysis_result = result  # Store in session state
                     
-                    if result["success"]:
+            # Display analysis result (from session state or fresh analysis)
+            result = st.session_state.get('analysis_result')
+            if result and result.get("success"):
                         # Health Score
                         col1, col2, col3 = st.columns([2,1,1])
                         with col1:
@@ -805,7 +812,9 @@ with tab4:
                                     st.markdown(f"**Expected Improvement:** {rec.get('expected_improvement', 'N/A')}")
                                     
                                     # Auto-retrain option
-                                    if st.button(f"🔄 Apply & Retrain", key=f"retrain_{i}"):
+                                    retrain_key = f"retrain_{selected_model_id}_{i}"
+                                    
+                                    if st.button(f"🔄 Apply & Retrain", key=retrain_key):
                                         with st.spinner("Retraining model..."):
                                             # Find model filepath and load
                                             import os
@@ -828,26 +837,40 @@ with tab4:
                                                         nested_metadata
                                                     )
                                                     
-                                                    if retrain_result["success"]:
-                                                        st.success(f"✅ Model retrained! New model ID: {retrain_result['new_model_id']}")
-                                                        st.markdown("**Before vs After:**")
-                                                        
-                                                        old_metrics = retrain_result.get('old_metrics', {})
-                                                        new_metrics = retrain_result.get('new_metrics', {})
-                                                        improvement = retrain_result.get('improvement', {})
-                                                        
-                                                        col1, col2 = st.columns(2)
-                                                        col1.metric("Old MAE", f"{old_metrics.get('mae', 0):.2f}")
-                                                        col2.metric("New MAE", f"{new_metrics.get('mae', 0):.2f}", 
-                                                                   delta=f"{improvement.get('mae', 0):.1f}%")
-                                                    else:
-                                                        st.error(f"❌ {retrain_result.get('error', 'Unknown error')}")
+                                                    # Store result in session state
+                                                    st.session_state.retrain_results[retrain_key] = retrain_result
                                                 else:
-                                                    st.error("❌ Failed to load model")
+                                                    st.session_state.retrain_results[retrain_key] = {
+                                                        "success": False,
+                                                        "error": "Failed to load model"
+                                                    }
                                             else:
-                                                st.error("❌ Model file not found")
-                    else:
-                        st.error(f"❌ {result.get('error', 'Unknown error')}")
+                                                st.session_state.retrain_results[retrain_key] = {
+                                                    "success": False,
+                                                    "error": "Model file not found"
+                                                }
+                                    
+                                    # Display retrain result if exists in session state
+                                    if retrain_key in st.session_state.retrain_results:
+                                        retrain_result = st.session_state.retrain_results[retrain_key]
+                                        
+                                        if retrain_result["success"]:
+                                            st.success(f"✅ Model retrained! New model ID: {retrain_result['new_model_id']}")
+                                            st.markdown("**Before vs After:**")
+                                            
+                                            old_metrics = retrain_result.get('old_metrics', {})
+                                            new_metrics = retrain_result.get('new_metrics', {})
+                                            improvement = retrain_result.get('improvement', {})
+                                            
+                                            col1, col2 = st.columns(2)
+                                            col1.metric("Old MAE", f"{old_metrics.get('mae', 0):.2f}")
+                                            col2.metric("New MAE", f"{new_metrics.get('mae', 0):.2f}", 
+                                                       delta=f"{improvement.get('mae', 0):.1f}%")
+                                        else:
+                                            st.error(f"❌ {retrain_result.get('error', 'Unknown error')}")
+            elif result:
+                # Analysis was run but failed
+                st.error(f"❌ {result.get('error', 'Unknown error')}")
     
     except ImportError as e:
         st.error(f"❌ ML Mentor dependencies not found: {e}")
