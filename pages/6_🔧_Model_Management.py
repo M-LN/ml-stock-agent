@@ -722,37 +722,97 @@ with tab3:
                 except Exception as e:
                     st.error(f"❌ Fejl ved prediction: {str(e)}")
 
-# ==================== TAB 4: ML MENTOR (DISABLED FOR DEPLOYMENT) ====================
+# ==================== TAB 4: ML MENTOR ====================
 with tab4:
     st.subheader("🧠 ML Mentor - Intelligent Model Analysis")
     st.markdown("**AI-drevet analyse af dine trænede modeller med actionable anbefalinger**")
     
-    st.warning("⚠️ **ML Mentor feature er midlertidigt disabled for denne deployment**")
-    st.markdown("""
-    ML Mentor kræver eksterne dependencies (`ml_mentor_engine.py`, `ml_mentor_retrain.py`) 
-    der ikke er inkluderet i denne deployment version.
-    
-    **Features (kommer i næste version):**
-    - 🤖 AI-powered model analysis med GPT-4
-    - 📊 Health score calculation (0-100)
-    - 💡 Actionable recommendations
-    - 🔄 Auto-retrain med anbefalinger
-    - 📈 Before/after comparison
-    - 📉 Training curve visualisering
-    
-    **For now:** Brug "Gemte Modeller" tab til at se model metrics og performance.
-    """)
-    
-    # Original ML Mentor code disabled for deployment
-    # Requires: ml_mentor_engine.py, ml_mentor_retrain.py
-    
-    # Skipping 800+ lines of ML Mentor implementation
-    # All code from here to line 1524 "except ImportError" has been disabled
-        
     try:
-        pass
-    except ImportError:
-        st.error("❌ ml_mentor_engine.py ikke fundet. Sørg for at filen er i samme directory.")
+        from ml_mentor_engine import analyze_saved_model, MLMentorEngine, calculate_health_score
+        from ml_mentor_retrain import apply_recommendation_and_retrain
+        
+        if len(all_models) == 0:
+            st.info("📭 Ingen gemte modeller. Træn en model først i 'Træn Nye Modeller' tab.")
+        else:
+            # Model selector
+            model_options = [f"{m['id']} - {m['type']} ({m['symbol']})" for m in all_models]
+            selected_model_str = st.selectbox("📂 Vælg model til analyse", model_options)
+            selected_model_id = selected_model_str.split(" - ")[0]
+            
+            # API Key config (optional for LLM analysis)
+            with st.expander("⚙️ API Configuration (Optional - For LLM Analysis)"):
+                api_key = st.text_input("OpenAI API Key", type="password", help="Only needed for LLM-powered analysis")
+                llm_model = st.selectbox("LLM Model", ["gpt-4o-mini", "gpt-4o", "gpt-4"])
+            
+            # Analyze button
+            if st.button("🔍 Analyze Model", type="primary"):
+                with st.spinner("Analyserer model..."):
+                    result = analyze_saved_model(selected_model_id, api_key if api_key else None, llm_model)
+                    
+                    if result["success"]:
+                        # Health Score
+                        col1, col2, col3 = st.columns([2,1,1])
+                        with col1:
+                            st.metric("🏥 Model Health Score", f"{result['health_score']:.1f}/100", 
+                                     result.get("health_status", ""))
+                        with col2:
+                            st.metric("📊 Recommendations", result.get("recommendation_count", 0))
+                        with col3:
+                            st.metric("� High Priority", result.get("high_priority_count", 0))
+                        
+                        st.divider()
+                        
+                        # Metrics
+                        st.markdown("### 📈 Performance Metrics")
+                        metrics = result.get("metrics", {})
+                        col1, col2, col3 = st.columns(3)
+                        col1.metric("MAE", f"{metrics.get('mae', 0):.2f}")
+                        col2.metric("RMSE", f"{metrics.get('rmse', 0):.2f}")
+                        col3.metric("R² Score", f"{metrics.get('r2', 0):.3f}")
+                        
+                        st.divider()
+                        
+                        # Recommendations
+                        st.markdown("### 💡 Recommendations")
+                        recommendations = result.get("recommendations", [])
+                        
+                        if len(recommendations) == 0:
+                            st.success("✅ No issues found! Model is performing well.")
+                        else:
+                            for i, rec in enumerate(recommendations):
+                                priority = rec.get("priority", "MEDIUM")
+                                emoji = "🔴" if priority == "HIGH" else "🟡" if priority == "MEDIUM" else "🟢"
+                                
+                                with st.expander(f"{emoji} {rec.get('category', 'General')}: {rec.get('issue', 'N/A')}"):
+                                    st.markdown(f"**Recommendation:** {rec.get('recommendation', 'N/A')}")
+                                    st.markdown(f"**Expected Improvement:** {rec.get('expected_improvement', 'N/A')}")
+                                    
+                                    # Auto-retrain option
+                                    if st.button(f"🔄 Apply & Retrain", key=f"retrain_{i}"):
+                                        with st.spinner("Retraining model..."):
+                                            # Get model metadata
+                                            model, metadata = load_model(selected_model_id)
+                                            if metadata:
+                                                retrain_result = apply_recommendation_and_retrain(
+                                                    rec, selected_model_id, 
+                                                    metadata.get("symbol"), 
+                                                    metadata.get("params", {})
+                                                )
+                                                
+                                                if retrain_result["success"]:
+                                                    st.success(f"✅ Model retrained! New model ID: {retrain_result['new_model_id']}")
+                                                    st.markdown("**Before vs After:**")
+                                                    col1, col2 = st.columns(2)
+                                                    col1.metric("Old MAE", f"{retrain_result['old_mae']:.2f}")
+                                                    col2.metric("New MAE", f"{retrain_result['new_mae']:.2f}", 
+                                                               delta=f"{retrain_result['improvement_pct']:.1f}%")
+                                                else:
+                                                    st.error(f"❌ {retrain_result.get('error', 'Unknown error')}")
+                    else:
+                        st.error(f"❌ {result.get('error', 'Unknown error')}")
+    
+    except ImportError as e:
+        st.error(f"❌ ML Mentor dependencies not found: {e}")
 
 # Footer info
 st.divider()
@@ -776,31 +836,106 @@ Denne side lader dig:
 **Modellerne gemmes i:** `{MODEL_DIR}/`
 """)
 
-# ==================== TAB 5: GRID SEARCH (DISABLED FOR DEPLOYMENT) ====================
+# ==================== TAB 5: GRID SEARCH ====================
 with tab5:
     st.subheader("🎛️ Grid Search - Automated Hyperparameter Tuning")
     st.markdown("**Automatisk find de bedste hyperparametre for dine modeller**")
     
-    st.warning("⚠️ **Grid Search feature er midlertidigt disabled for denne deployment**")
-    st.markdown("""
-    Grid Search kræver eksterne dependencies (`grid_search_engine.py`) 
-    der ikke er inkluderet i denne deployment version.
-    
-    **Features (kommer i næste version):**
-    - 🔍 Automated hyperparameter search
-    - 📊 Small/Medium/Large search spaces
-    - ⚡ Parallel execution
-    - 📈 Best model identification
-    - 📝 Search history tracking
-    
-    **For now:** Brug "Træn Nye Modeller" tab til at eksperimentere med forskellige hyperparametre manuelt.
-    """)
-    
-    # Original Grid Search code disabled
     try:
-        pass
-    except ImportError:
-        st.error("❌ grid_search_engine.py ikke fundet.")
+        from grid_search_engine import GridSearchEngine, get_previous_grid_searches, SEARCH_SPACES
+        
+        # Previous searches
+        with st.expander("📋 Previous Grid Searches"):
+            previous = get_previous_grid_searches()
+            if len(previous) > 0:
+                st.dataframe(pd.DataFrame(previous), use_container_width=True)
+            else:
+                st.info("No previous searches found.")
+        
+        st.divider()
+        
+        # New search configuration
+        st.markdown("### 🎯 Configure New Grid Search")
+        
+        col1, col2 = st.columns(2)
+        with col1:
+            gs_model_type = st.selectbox("Model Type", ["Random Forest", "XGBoost", "LSTM"], key="gs_model")
+        with col2:
+            gs_symbol = st.text_input("Stock Symbol", value="AAPL", key="gs_symbol")
+        
+        # Search space selector
+        search_size = st.select_slider("Search Space Size", 
+                                       options=["Small (fast)", "Medium", "Large (slow)"],
+                                       value="Small (fast)")
+        
+        # Preview search space
+        with st.expander("🔍 Preview Search Space"):
+            if gs_model_type in SEARCH_SPACES:
+                space = SEARCH_SPACES[gs_model_type]
+                st.json(space)
+                
+                # Calculate combinations
+                total_combos = 1
+                for param_values in space.values():
+                    total_combos *= len(param_values)
+                st.info(f"Total parameter combinations: {total_combos}")
+        
+        st.divider()
+        
+        # Start search
+        if st.button("🚀 Start Grid Search", type="primary"):
+            if not gs_symbol:
+                st.error("Please enter a stock symbol")
+            else:
+                with st.spinner(f"Running grid search for {gs_symbol}..."):
+                    # Fetch data
+                    import yfinance as yf
+                    data = yf.download(gs_symbol, period="2y", progress=False)
+                    
+                    if data.empty:
+                        st.error(f"No data found for {gs_symbol}")
+                    else:
+                        # Initialize engine
+                        search_space = SEARCH_SPACES.get(gs_model_type, {})
+                        engine = GridSearchEngine(gs_model_type, gs_symbol, search_space)
+                        
+                        # Progress tracking
+                        progress_bar = st.progress(0)
+                        status_text = st.empty()
+                        
+                        def progress_callback(current, total):
+                            progress = current / total
+                            progress_bar.progress(progress)
+                            status_text.text(f"Testing combination {current}/{total}...")
+                        
+                        # Run search
+                        try:
+                            results = engine.run_search(data, progress_callback)
+                            
+                            if results["success"]:
+                                st.success(f"✅ Grid search completed! Tested {results['trials_completed']} combinations")
+                                
+                                # Best params
+                                st.markdown("### 🏆 Best Parameters Found")
+                                st.json(results["best_params"])
+                                
+                                # Best score
+                                st.metric("Best MAE", f"{results['best_score']:.2f}")
+                                
+                                # Results table
+                                st.markdown("### 📊 All Results")
+                                results_df = pd.DataFrame(results["all_results"])
+                                st.dataframe(results_df.sort_values("score"), use_container_width=True)
+                                
+                                # Train with best params button
+                                if st.button("🎯 Train Model with Best Params"):
+                                    st.info("Navigate to 'Træn Nye Modeller' tab and use these parameters:")
+                                    st.json(results["best_params"])
+                            else:
+                                st.error(f"❌ {results.get('error', 'Unknown error')}")
+                        
+                        except Exception as e:
+                            st.error(f"❌ Grid search failed: {str(e)}")
     
-    # Below: ~260 lines of Grid Search implementation disabled
-    # (All code removed for deployment)
+    except ImportError as e:
+        st.error(f"❌ Grid Search dependencies not found: {e}")
