@@ -58,11 +58,22 @@ def generate_rule_based_recommendations(metadata):
 
 def analyze_saved_model(model_id, api_key=None, llm_model="gpt-4o-mini"):
     # Find model filepath from timestamp ID
-    filepath = os.path.join(MODEL_DIR, f"{model_id}.pkl")
+    # Model files are named: {model_type}_{symbol}_{timestamp}.pkl
+    # But model_id is just the timestamp, so we need to find the matching file
+    
+    filepath = None
+    if os.path.exists(MODEL_DIR):
+        for filename in os.listdir(MODEL_DIR):
+            if filename.endswith('.pkl') and model_id in filename:
+                filepath = os.path.join(MODEL_DIR, filename)
+                break
+    
+    if not filepath or not os.path.exists(filepath):
+        return {"success": False, "error": f"Model not found for ID: {model_id}"}
     
     model_package = load_model(filepath)
     if not model_package:
-        return {"success": False, "error": "Model not found"}
+        return {"success": False, "error": "Failed to load model package"}
     
     # Extract metadata from model package
     metadata = {
@@ -99,8 +110,19 @@ def analyze_saved_model(model_id, api_key=None, llm_model="gpt-4o-mini"):
 def compare_model_versions(model_ids):
     data = []
     for mid in model_ids:
-        filepath = os.path.join(MODEL_DIR, f"{mid}.pkl")
-        model_package = load_model(filepath)
+        # Find matching file for this model ID
+        filepath = None
+        if os.path.exists(MODEL_DIR):
+            for filename in os.listdir(MODEL_DIR):
+                if filename.endswith('.pkl') and mid in filename:
+                    filepath = os.path.join(MODEL_DIR, filename)
+                    break
+        
+        if filepath:
+            model_package = load_model(filepath)
+        else:
+            model_package = None
+            
         if model_package:
             metadata = {
                 "model_type": model_package.get("model_type"),
