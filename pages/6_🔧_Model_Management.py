@@ -829,12 +829,14 @@ with tab4:
                                                 model_package = load_model(filepath)
                                                 if model_package:
                                                     symbol = model_package.get("symbol")
+                                                    model_type = model_package.get("model_type")
                                                     nested_metadata = model_package.get("metadata", {})
                                                     
                                                     retrain_result = apply_recommendation_and_retrain(
                                                         rec, selected_model_id, 
                                                         symbol, 
-                                                        nested_metadata
+                                                        nested_metadata,
+                                                        model_type
                                                     )
                                                     
                                                     # Store result in session state

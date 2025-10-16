@@ -54,7 +54,7 @@ def parse_recommendation(recommendation_text):
     
     return params
 
-def apply_recommendation_and_retrain(recommendation, model_id, symbol, current_params):
+def apply_recommendation_and_retrain(recommendation, model_id, symbol, current_params, model_type=None):
     """
     Apply a recommendation and retrain the model
     
@@ -63,6 +63,7 @@ def apply_recommendation_and_retrain(recommendation, model_id, symbol, current_p
         model_id: Current model ID
         symbol: Stock symbol
         current_params: Dict with current model parameters
+        model_type: Model type string (rf, xgboost, lstm, prophet) - optional, will be inferred if not provided
     
     Returns:
         dict: {
@@ -83,21 +84,34 @@ def apply_recommendation_and_retrain(recommendation, model_id, symbol, current_p
         new_params = current_params.copy()
         new_params.update(suggested_params)
         
-        # Extract model type from model_id
-        model_type = None
-        if 'RF' in model_id:
-            model_type = 'Random Forest'
-        elif 'XGB' in model_id:
-            model_type = 'XGBoost'
-        elif 'LSTM' in model_id:
-            model_type = 'LSTM'
-        elif 'Prophet' in model_id:
-            model_type = 'Prophet'
-        
+        # Determine model type if not provided
         if not model_type:
+            # Try to extract from model_id or filename
+            if 'rf' in model_id.lower():
+                model_type = 'rf'
+            elif 'xgb' in model_id.lower():
+                model_type = 'xgboost'
+            elif 'lstm' in model_id.lower():
+                model_type = 'lstm'
+            elif 'prophet' in model_id.lower():
+                model_type = 'prophet'
+        
+        # Convert model_type to display format
+        if model_type:
+            if model_type.lower() == 'rf':
+                model_type_display = 'Random Forest'
+            elif model_type.lower() == 'xgboost':
+                model_type_display = 'XGBoost'
+            elif model_type.lower() == 'lstm':
+                model_type_display = 'LSTM'
+            elif model_type.lower() == 'prophet':
+                model_type_display = 'Prophet'
+            else:
+                model_type_display = model_type
+        else:
             return {
                 'success': False,
-                'error': 'Could not determine model type from model_id'
+                'error': f'Could not determine model type from model_id: {model_id}'
             }
         
         # Get fresh data
@@ -111,9 +125,9 @@ def apply_recommendation_and_retrain(recommendation, model_id, symbol, current_p
             }
         
         # Train new model based on type
-        with st.spinner(f"Training new {model_type} model with recommended parameters..."):
+        with st.spinner(f"Training new {model_type_display} model with recommended parameters..."):
             
-            if model_type == 'Random Forest':
+            if model_type_display == 'Random Forest':
                 n_estimators = new_params.get('n_estimators', 100)
                 max_depth = new_params.get('max_depth', 10)
                 new_model_id = train_and_save_rf(
@@ -123,7 +137,7 @@ def apply_recommendation_and_retrain(recommendation, model_id, symbol, current_p
                     max_depth=max_depth
                 )
             
-            elif model_type == 'XGBoost':
+            elif model_type_display == 'XGBoost':
                 n_estimators = new_params.get('n_estimators', 100)
                 learning_rate = new_params.get('learning_rate', 0.1)
                 max_depth = new_params.get('max_depth', 5)
@@ -135,7 +149,7 @@ def apply_recommendation_and_retrain(recommendation, model_id, symbol, current_p
                     max_depth=max_depth
                 )
             
-            elif model_type == 'LSTM':
+            elif model_type_display == 'LSTM':
                 sequence_length = new_params.get('sequence_length', 60)
                 lstm_units = new_params.get('lstm_units', 50)
                 epochs = new_params.get('epochs', 50)
@@ -149,13 +163,13 @@ def apply_recommendation_and_retrain(recommendation, model_id, symbol, current_p
                     batch_size=batch_size
                 )
             
-            elif model_type == 'Prophet':
+            elif model_type_display == 'Prophet':
                 new_model_id = train_and_save_prophet(data, symbol)
             
             else:
                 return {
                     'success': False,
-                    'error': f'Unsupported model type: {model_type}'
+                    'error': f'Unsupported model type: {model_type_display}'
                 }
         
         # Calculate old metrics (from current_params which is the model's metadata)
