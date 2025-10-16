@@ -158,11 +158,11 @@ def apply_recommendation_and_retrain(recommendation, model_id, symbol, current_p
                     'error': f'Unsupported model type: {model_type}'
                 }
         
-        # Calculate old metrics (from recommendation)
+        # Calculate old metrics (from current_params which is the model's metadata)
         old_metrics = {
-            'mae': recommendation.get('mae', 0),
-            'rmse': recommendation.get('rmse', 0),
-            'r2': recommendation.get('r2_score', 0)
+            'mae': current_params.get('val_mae') or current_params.get('mae', 0),
+            'rmse': current_params.get('val_rmse') or current_params.get('rmse', 0),
+            'r2': current_params.get('r2_score', 0)
         }
         
         # Calculate new metrics - train_and_save_* returns a dict

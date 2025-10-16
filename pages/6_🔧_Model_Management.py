@@ -807,24 +807,45 @@ with tab4:
                                     # Auto-retrain option
                                     if st.button(f"🔄 Apply & Retrain", key=f"retrain_{i}"):
                                         with st.spinner("Retraining model..."):
-                                            # Get model metadata
-                                            model, metadata = load_model(selected_model_id)
-                                            if metadata:
-                                                retrain_result = apply_recommendation_and_retrain(
-                                                    rec, selected_model_id, 
-                                                    metadata.get("symbol"), 
-                                                    metadata.get("params", {})
-                                                )
-                                                
-                                                if retrain_result["success"]:
-                                                    st.success(f"✅ Model retrained! New model ID: {retrain_result['new_model_id']}")
-                                                    st.markdown("**Before vs After:**")
-                                                    col1, col2 = st.columns(2)
-                                                    col1.metric("Old MAE", f"{retrain_result['old_mae']:.2f}")
-                                                    col2.metric("New MAE", f"{retrain_result['new_mae']:.2f}", 
-                                                               delta=f"{retrain_result['improvement_pct']:.1f}%")
+                                            # Find model filepath and load
+                                            import os
+                                            filepath = None
+                                            if os.path.exists(MODEL_DIR):
+                                                for filename in os.listdir(MODEL_DIR):
+                                                    if filename.endswith('.pkl') and selected_model_id in filename:
+                                                        filepath = os.path.join(MODEL_DIR, filename)
+                                                        break
+                                            
+                                            if filepath:
+                                                model_package = load_model(filepath)
+                                                if model_package:
+                                                    symbol = model_package.get("symbol")
+                                                    nested_metadata = model_package.get("metadata", {})
+                                                    
+                                                    retrain_result = apply_recommendation_and_retrain(
+                                                        rec, selected_model_id, 
+                                                        symbol, 
+                                                        nested_metadata
+                                                    )
+                                                    
+                                                    if retrain_result["success"]:
+                                                        st.success(f"✅ Model retrained! New model ID: {retrain_result['new_model_id']}")
+                                                        st.markdown("**Before vs After:**")
+                                                        
+                                                        old_metrics = retrain_result.get('old_metrics', {})
+                                                        new_metrics = retrain_result.get('new_metrics', {})
+                                                        improvement = retrain_result.get('improvement', {})
+                                                        
+                                                        col1, col2 = st.columns(2)
+                                                        col1.metric("Old MAE", f"{old_metrics.get('mae', 0):.2f}")
+                                                        col2.metric("New MAE", f"{new_metrics.get('mae', 0):.2f}", 
+                                                                   delta=f"{improvement.get('mae', 0):.1f}%")
+                                                    else:
+                                                        st.error(f"❌ {retrain_result.get('error', 'Unknown error')}")
                                                 else:
-                                                    st.error(f"❌ {retrain_result.get('error', 'Unknown error')}")
+                                                    st.error("❌ Failed to load model")
+                                            else:
+                                                st.error("❌ Model file not found")
                     else:
                         st.error(f"❌ {result.get('error', 'Unknown error')}")
     
