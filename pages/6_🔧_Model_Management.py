@@ -735,7 +735,7 @@ with tab4:
             st.info("📭 Ingen gemte modeller. Træn en model først i 'Træn Nye Modeller' tab.")
         else:
             # Model selector
-            model_options = [f"{m['id']} - {m['type']} ({m['symbol']})" for m in all_models]
+            model_options = [f"{m['timestamp']} - {m['model_type']} ({m['symbol']})" for m in all_models]
             selected_model_str = st.selectbox("📂 Vælg model til analyse", model_options)
             selected_model_id = selected_model_str.split(" - ")[0]
             
