@@ -19,41 +19,64 @@ class MLMentorEngine:
 
 def calculate_health_score(metadata):
     score = 100.0
-    mae = metadata.get("mae", float("inf"))
-    if mae > 10: score -= 30
-    elif mae > 5: score -= 15
-    elif mae > 2: score -= 5
     
-    r2 = metadata.get("r2_score", 0)
-    if r2 < 0: score -= 30
-    elif r2 < 0.5: score -= 20
-    elif r2 < 0.7: score -= 10
+    # Handle MAE (can be None or missing)
+    mae = metadata.get("mae")
+    if mae is not None:
+        if mae > 10: score -= 30
+        elif mae > 5: score -= 15
+        elif mae > 2: score -= 5
+    else:
+        score -= 20  # Penalize if MAE is missing
     
+    # Handle R2 score (can be None or missing)
+    r2 = metadata.get("r2_score")
+    if r2 is not None:
+        if r2 < 0: score -= 30
+        elif r2 < 0.5: score -= 20
+        elif r2 < 0.7: score -= 10
+    else:
+        score -= 10  # Small penalty if R2 is missing
+    
+    # Bonus for deployed models
     if metadata.get("deployed"): score += 5
+    
     return max(0, min(100, score))
 
 def generate_rule_based_recommendations(metadata):
     recommendations = []
-    mae = metadata.get("mae", 0)
+    mae = metadata.get("mae")
     model_type = metadata.get("model_type", "")
     
-    if mae > 5:
-        if "RF" in model_type:
+    # Only generate recommendations if MAE is available and valid
+    if mae is not None and mae > 5:
+        if "rf" in model_type.lower():
             recommendations.append({
                 "priority": "HIGH",
                 "category": "Hyperparameters",
                 "issue": f"High MAE ({mae:.2f})",
                 "recommendation": "Increase n_estimators to 200-300",
-                "expected_improvement": "10-20%% MAE reduction"
+                "expected_improvement": "10-20% MAE reduction"
             })
-        elif "XGB" in model_type:
+        elif "xgb" in model_type.lower():
             recommendations.append({
                 "priority": "HIGH",
                 "category": "Learning",
                 "issue": f"High MAE ({mae:.2f})",
                 "recommendation": "Lower learning_rate to 0.01",
-                "expected_improvement": "15-25%% improvement"
+                "expected_improvement": "15-25% improvement"
             })
+    
+    # Check for missing metrics
+    if mae is None:
+        recommendations.append({
+            "priority": "MEDIUM",
+            "category": "Data Quality",
+            "issue": "MAE metric missing",
+            "recommendation": "Retrain model with proper validation metrics",
+            "expected_improvement": "Better model evaluation"
+        })
+    
     return recommendations
 
 def analyze_saved_model(model_id, api_key=None, llm_model="gpt-4o-mini"):
@@ -76,12 +99,15 @@ def analyze_saved_model(model_id, api_key=None, llm_model="gpt-4o-mini"):
         return {"success": False, "error": "Failed to load model package"}
     
     # Extract metadata from model package
+    # Metrics are stored in nested 'metadata' dict
+    nested_metadata = model_package.get("metadata", {})
+    
     metadata = {
         "model_type": model_package.get("model_type"),
         "symbol": model_package.get("symbol"),
-        "mae": model_package.get("mae"),
-        "rmse": model_package.get("rmse"),
-        "r2_score": model_package.get("r2_score"),
+        "mae": nested_metadata.get("val_mae") or nested_metadata.get("mae"),
+        "rmse": nested_metadata.get("val_rmse") or nested_metadata.get("rmse"),
+        "r2_score": nested_metadata.get("r2_score"),
         "deployed": model_package.get("deployed", False)
     }
     
@@ -124,16 +150,17 @@ def compare_model_versions(model_ids):
             model_package = None
             
         if model_package:
+            nested_metadata = model_package.get("metadata", {})
             metadata = {
                 "model_type": model_package.get("model_type"),
-                "mae": model_package.get("mae", 0),
-                "r2_score": model_package.get("r2_score", 0),
+                "mae": nested_metadata.get("val_mae") or nested_metadata.get("mae"),
+                "r2_score": nested_metadata.get("r2_score"),
                 "deployed": model_package.get("deployed", False)
             }
             data.append({
                 "Model ID": mid,
                 "Type": metadata.get("model_type"),
-                "MAE": metadata.get("mae", 0),
+                "MAE": metadata.get("mae") if metadata.get("mae") is not None else "N/A",
                 "Health": calculate_health_score(metadata)
             })
     return pd.DataFrame(data)
