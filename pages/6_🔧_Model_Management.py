@@ -741,7 +741,18 @@ with tab4:
             
             # API Key config (optional for LLM analysis)
             with st.expander("⚙️ API Configuration (Optional - For LLM Analysis)"):
-                api_key = st.text_input("OpenAI API Key", type="password", help="Only needed for LLM-powered analysis")
+                # Try to get from secrets first
+                default_api_key = ""
+                if "OPENAI_API_KEY" in st.secrets:
+                    default_api_key = st.secrets["OPENAI_API_KEY"]
+                    st.success("✅ OpenAI API Key loaded from secrets")
+                
+                api_key = st.text_input(
+                    "OpenAI API Key", 
+                    value=default_api_key,
+                    type="password", 
+                    help="Only needed for LLM-powered analysis. Can be set in Streamlit secrets as OPENAI_API_KEY"
+                )
                 llm_model = st.selectbox("LLM Model", ["gpt-4o-mini", "gpt-4o", "gpt-4"])
             
             # Analyze button
