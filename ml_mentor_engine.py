@@ -57,9 +57,22 @@ def generate_rule_based_recommendations(metadata):
     return recommendations
 
 def analyze_saved_model(model_id, api_key=None, llm_model="gpt-4o-mini"):
-    model, metadata = load_model(model_id)
-    if not metadata:
+    # Find model filepath from timestamp ID
+    filepath = os.path.join(MODEL_DIR, f"{model_id}.pkl")
+    
+    model_package = load_model(filepath)
+    if not model_package:
         return {"success": False, "error": "Model not found"}
+    
+    # Extract metadata from model package
+    metadata = {
+        "model_type": model_package.get("model_type"),
+        "symbol": model_package.get("symbol"),
+        "mae": model_package.get("mae"),
+        "rmse": model_package.get("rmse"),
+        "r2_score": model_package.get("r2_score"),
+        "deployed": model_package.get("deployed", False)
+    }
     
     health_score = calculate_health_score(metadata)
     recommendations = generate_rule_based_recommendations(metadata)
@@ -86,8 +99,15 @@ def analyze_saved_model(model_id, api_key=None, llm_model="gpt-4o-mini"):
 def compare_model_versions(model_ids):
     data = []
     for mid in model_ids:
-        model, metadata = load_model(mid)
-        if metadata:
+        filepath = os.path.join(MODEL_DIR, f"{mid}.pkl")
+        model_package = load_model(filepath)
+        if model_package:
+            metadata = {
+                "model_type": model_package.get("model_type"),
+                "mae": model_package.get("mae", 0),
+                "r2_score": model_package.get("r2_score", 0),
+                "deployed": model_package.get("deployed", False)
+            }
             data.append({
                 "Model ID": mid,
                 "Type": metadata.get("model_type"),

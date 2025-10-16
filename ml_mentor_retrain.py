@@ -165,16 +165,19 @@ def apply_recommendation_and_retrain(recommendation, model_id, symbol, current_p
             'r2': recommendation.get('r2_score', 0)
         }
         
-        # Calculate new metrics
-        from agent_interactive import load_model, predict_with_saved_model
-        new_model, new_metadata = load_model(new_model_id)
-        
-        if new_model and new_metadata:
+        # Calculate new metrics - train_and_save_* returns a dict
+        if isinstance(new_model_id, dict):
+            # Extract metadata from return value
+            new_metadata = new_model_id.get('metadata', {})
             new_metrics = {
-                'mae': new_metadata.get('mae', 0),
-                'rmse': new_metadata.get('rmse', 0),
+                'mae': new_metadata.get('val_mae', 0),
+                'rmse': new_metadata.get('val_rmse', 0),
                 'r2': new_metadata.get('r2_score', 0)
             }
+            # Extract actual model ID from filepath
+            filepath = new_model_id.get('filepath', '')
+            import os
+            new_model_id = os.path.basename(filepath).replace('.pkl', '') if filepath else 'unknown'
         else:
             new_metrics = old_metrics
         
