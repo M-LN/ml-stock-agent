@@ -1101,19 +1101,22 @@ with tab5:
                             results = engine.run_search(data, progress_callback)
                             
                             if results["success"]:
-                                st.success(f"✅ Grid search completed! Tested {results['trials_completed']} combinations")
+                                st.success(f"✅ Grid search completed! Tested {results['total_trials']} combinations")
                                 
                                 # Best params
                                 st.markdown("### 🏆 Best Parameters Found")
                                 st.json(results["best_params"])
                                 
                                 # Best score
-                                st.metric("Best MAE", f"{results['best_score']:.2f}")
+                                st.metric("Best Validation MAE", f"${results['best_score']:.2f}")
                                 
                                 # Results table
                                 st.markdown("### 📊 All Results")
-                                results_df = pd.DataFrame(results["all_results"])
-                                st.dataframe(results_df.sort_values("score"), use_container_width=True)
+                                if results["all_results"]:
+                                    results_df = pd.DataFrame(results["all_results"])
+                                    st.dataframe(results_df.sort_values("score"), use_container_width=True)
+                                else:
+                                    st.warning("No successful trials completed.")
                                 
                                 # Train with best params button
                                 if st.button("🎯 Train Model with Best Params"):
