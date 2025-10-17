@@ -1103,18 +1103,54 @@ with tab5:
                             if results["success"]:
                                 st.success(f"✅ Grid search completed! Tested {results['total_trials']} combinations")
                                 
-                                # Best params
-                                st.markdown("### 🏆 Best Parameters Found")
-                                st.json(results["best_params"])
+                                # Best params and score side by side
+                                col1, col2 = st.columns([2, 1])
                                 
-                                # Best score
-                                st.metric("Best Validation MAE", f"${results['best_score']:.2f}")
+                                with col1:
+                                    st.markdown("### 🏆 Best Parameters Found")
+                                    st.json(results["best_params"])
+                                
+                                with col2:
+                                    st.markdown("### 📊 Best Score")
+                                    st.metric("Validation MAE", f"${results['best_score']:.2f}")
+                                    if results.get('best_model_id'):
+                                        st.info(f"Model saved")
+                                
+                                st.divider()
                                 
                                 # Results table
                                 st.markdown("### 📊 All Results")
-                                if results["all_results"]:
+                                if results["all_results"] and len(results["all_results"]) > 0:
                                     results_df = pd.DataFrame(results["all_results"])
-                                    st.dataframe(results_df.sort_values("score"), use_container_width=True)
+                                    
+                                    # Format the dataframe for better display
+                                    display_df = results_df.copy()
+                                    
+                                    # Convert params dict to string for display
+                                    if 'params' in display_df.columns:
+                                        display_df['params'] = display_df['params'].apply(lambda x: str(x))
+                                    
+                                    # Round numeric columns
+                                    numeric_cols = ['val_mae', 'val_rmse', 'score']
+                                    for col in numeric_cols:
+                                        if col in display_df.columns:
+                                            display_df[col] = display_df[col].round(2)
+                                    
+                                    # Sort by score (lower is better)
+                                    display_df = display_df.sort_values("score")
+                                    
+                                    # Display
+                                    st.dataframe(display_df, use_container_width=True)
+                                    
+                                    # Show summary stats
+                                    st.markdown("#### 📈 Summary Statistics")
+                                    col1, col2, col3 = st.columns(3)
+                                    with col1:
+                                        st.metric("Best MAE", f"${results_df['val_mae'].min():.2f}")
+                                    with col2:
+                                        st.metric("Worst MAE", f"${results_df['val_mae'].max():.2f}")
+                                    with col3:
+                                        st.metric("Average MAE", f"${results_df['val_mae'].mean():.2f}")
                                 else:
                                     st.warning("No successful trials completed.")
                                 
