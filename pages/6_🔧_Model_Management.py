@@ -159,11 +159,19 @@ with tab1:
                                             help="Fang ugentlige mønstre")
             st.info("Prophet er god til trends og seasonality")
         
+        # Initialize session state
+        if 'training_state' not in st.session_state:
+            st.session_state.training_state = 'idle'  # idle, validated, training, completed
+        if 'validation_data' not in st.session_state:
+            st.session_state.validation_data = None
+        
         # Train button
-        train_button = st.button("🚀 Træn Model", type="primary", use_container_width=True)
+        train_button = st.button("🚀 Analyze & Prepare Training", type="primary", use_container_width=True)
     
     with col2:
-        if train_button:
+        # Handle training state machine
+        if train_button and st.session_state.training_state == 'idle':
+            # Step 1: Fetch data and validate
             with st.spinner(f"📥 Henter data for {train_symbol}..."):
                 try:
                     data = yf.download(train_symbol, period=train_period, progress=False)
@@ -196,25 +204,70 @@ with tab1:
             
             # Generate validation report
             validation_report = validator.generate_training_report(current_params)
-            display_validation_report(validation_report, current_params, model_type)
+            
+            # Store in session state
+            st.session_state.validation_data = {
+                'data': data,
+                'report': validation_report,
+                'params': current_params,
+                'model_type': model_type,
+                'symbol': train_symbol,
+                'period': train_period
+            }
+            st.session_state.training_state = 'validated'
+            st.rerun()
+        
+        # Display validation report if in validated state
+        if st.session_state.training_state == 'validated' and st.session_state.validation_data:
+            val_data = st.session_state.validation_data
+            
+            st.markdown("---")
+            display_validation_report(val_data['report'], val_data['params'], val_data['model_type'])
             
             # Check if there are critical issues
-            if len(validation_report['data_quality']['issues']) > 0:
+            if len(val_data['report']['data_quality']['issues']) > 0:
                 st.warning("⚠️ Critical issues detected. Training may not produce reliable results.")
                 proceed = st.checkbox("I understand the risks and want to proceed anyway")
                 if not proceed:
+                    st.info("👆 Check the box above to continue, or adjust parameters and click 'Analyze & Prepare Training' again")
+                    if st.button("🔄 Reset and Start Over"):
+                        st.session_state.training_state = 'idle'
+                        st.session_state.validation_data = None
+                        st.rerun()
                     st.stop()
+            
+            st.markdown("---")
+            
+            # Confirmation button after seeing validation
+            col_confirm1, col_confirm2 = st.columns([2, 1])
+            with col_confirm1:
+                confirm_button = st.button("✅ Confirm and Start Training", type="primary", use_container_width=True)
+            with col_confirm2:
+                if st.button("🔄 Reset", use_container_width=True):
+                    st.session_state.training_state = 'idle'
+                    st.session_state.validation_data = None
+                    st.rerun()
+            
+            if not confirm_button:
+                st.info("👆 Review the validation report above, then click to start training")
+                st.stop()
+            
+            # User confirmed - start training
+            st.session_state.training_state = 'training'
+            st.rerun()
+        
+        # Training state - actually train the model
+        if st.session_state.training_state == 'training' and st.session_state.validation_data:
+            val_data = st.session_state.validation_data
+            data = val_data['data']
+            model_type = val_data['model_type']
+            train_symbol = val_data['symbol']
             
             st.markdown("---")
             st.markdown("### 🏋️ Training Model")
             
-            # Confirmation button after seeing validation
-            if not st.button("✅ Confirm and Start Training", type="primary"):
-                st.info("👆 Review the validation report above, then click to start training")
-                st.stop()
-            
             # Train model
-            with st.spinner(f"🏋️ Træner {model_type} model... (Est. {int(validation_report['estimated_time'])}s)"):
+            with st.spinner(f"🏋️ Træner {model_type} model... (Est. {int(val_data['report']['estimated_time'])}s)"):
                 try:
                     if model_type == "Random Forest":
                         result = train_and_save_rf(
@@ -250,30 +303,62 @@ with tab1:
                             weekly_seasonality=weekly_seasonality
                         )
                     
-                    if result:
-                        st.success("🎉 Model trænet og gemt!")
-                        
-                        # Display results
-                        st.markdown("### 📊 Training Resultater")
-                        
-                        col_a, col_b, col_c = st.columns(3)
-                        with col_a:
-                            st.metric("Training MAE", f"${result['metadata']['train_mae']:.2f}")
-                        with col_b:
-                            st.metric("Training RMSE", f"${result['metadata']['train_rmse']:.2f}")
-                        with col_c:
-                            st.metric("Training Samples", result['metadata']['training_samples'])
-                        
-                        # Show metadata
-                        with st.expander("📋 Model Metadata"):
-                            st.json(result['metadata'])
-                        
-                        st.info(f"💾 Model gemt: `{result['filepath']}`")
+                    # Store result and move to completed state
+                    st.session_state.validation_data['result'] = result
+                    st.session_state.training_state = 'completed'
+                    st.rerun()
                         
                 except Exception as e:
-                    st.error(f"❌ Fejl ved træning: {str(e)}")
-        else:
-            # Show instructions
+                    st.error(f"❌ Training fejl: {str(e)}")
+                    st.session_state.training_state = 'idle'
+                    st.session_state.validation_data = None
+        
+        # Completed state - show results
+        if st.session_state.training_state == 'completed' and st.session_state.validation_data:
+            val_data = st.session_state.validation_data
+            result = val_data.get('result')
+            
+            if result:
+                st.success("🎉 Model trænet og gemt!")
+                
+                # Display results
+                st.markdown("### 📊 Training Resultater")
+                
+                col_a, col_b, col_c = st.columns(3)
+                with col_a:
+                    st.metric("Training MAE", f"${result['metadata']['train_mae']:.2f}")
+                with col_b:
+                    st.metric("Training RMSE", f"${result['metadata']['train_rmse']:.2f}")
+                with col_c:
+                    st.metric("Training Samples", result['metadata']['training_samples'])
+                
+                # Show metadata
+                with st.expander("📋 Model Metadata"):
+                    st.json(result['metadata'])
+                
+                st.info(f"💾 Model gemt: `{result['filepath']}`")
+                
+                # Reset button
+                if st.button("🔄 Train Another Model", type="primary"):
+                    st.session_state.training_state = 'idle'
+                    st.session_state.validation_data = None
+                    st.rerun()
+        
+        # Check if parameters changed - reset workflow if in validated/training/completed state
+        if st.session_state.training_state != 'idle' and st.session_state.validation_data:
+            val_data = st.session_state.validation_data
+            params_changed = (
+                val_data['symbol'] != train_symbol or
+                val_data['model_type'] != model_type or
+                val_data['period'] != train_period
+            )
+            if params_changed:
+                st.warning("⚠️ Parameters changed. Please re-analyze data.")
+                st.session_state.training_state = 'idle'
+                st.session_state.validation_data = None
+        
+        # Show instructions only when idle
+        if st.session_state.training_state == 'idle':
             st.info("""
             ### 📚 Sådan træner du en model:
             
