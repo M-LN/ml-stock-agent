@@ -25,6 +25,7 @@ if not os.path.exists(GRID_SEARCH_DIR):
     os.makedirs(GRID_SEARCH_DIR)
 
 # Predefined search spaces
+# Note: Only parameters supported by train_and_save_* functions
 SEARCH_SPACES = {
     'Random Forest': {
         'small': {
@@ -33,14 +34,11 @@ SEARCH_SPACES = {
         },
         'medium': {
             'n_estimators': [50, 100, 200],
-            'max_depth': [5, 10, 15],
-            'min_samples_split': [2, 5]
+            'max_depth': [5, 10, 15]
         },
         'large': {
             'n_estimators': [50, 100, 200, 300],
-            'max_depth': [5, 10, 15, 20],
-            'min_samples_split': [2, 5, 10],
-            'min_samples_leaf': [1, 2, 4]
+            'max_depth': [5, 10, 15, 20]
         }
     },
     'XGBoost': {
@@ -56,8 +54,7 @@ SEARCH_SPACES = {
         'large': {
             'n_estimators': [50, 100, 200, 300],
             'learning_rate': [0.1, 0.05, 0.01, 0.001],
-            'max_depth': [3, 5, 7, 10],
-            'subsample': [0.8, 0.9, 1.0]
+            'max_depth': [3, 5, 7, 10]
         }
     },
     'LSTM': {
@@ -100,6 +97,7 @@ class GridSearchEngine:
         self.results = []
         self.best_params = None
         self.best_score = float('inf')  # Lower is better for error metrics
+        self.best_model_id = None
     
     def get_param_combinations(self):
         """
@@ -161,52 +159,60 @@ class GridSearchEngine:
             # Train model with these parameters
             try:
                 if self.model_type == 'Random Forest':
-                    model_id = train_and_save_rf(
+                    # Filter params to only those accepted by train_and_save_rf
+                    rf_params = {k: v for k, v in params.items() 
+                                if k in ['n_estimators', 'max_depth', 'window', 'horizon']}
+                    result_dict = train_and_save_rf(
                         data, 
                         self.symbol,
-                        **params
+                        **rf_params
                     )
                 elif self.model_type == 'XGBoost':
-                    model_id = train_and_save_xgboost(
+                    # Filter params to only those accepted by train_and_save_xgboost
+                    xgb_params = {k: v for k, v in params.items() 
+                                 if k in ['n_estimators', 'max_depth', 'learning_rate', 'window', 'horizon']}
+                    result_dict = train_and_save_xgboost(
                         data,
                         self.symbol,
-                        **params
+                        **xgb_params
                     )
                 elif self.model_type == 'LSTM':
-                    model_id = train_and_save_lstm(
+                    # Filter params to only those accepted by train_and_save_lstm
+                    lstm_params = {k: v for k, v in params.items() 
+                                  if k in ['window', 'epochs', 'horizon', 'lstm_units', 'sequence_length', 'batch_size']}
+                    result_dict = train_and_save_lstm(
                         data,
                         self.symbol,
-                        **params
+                        **lstm_params
                     )
                 else:
                     continue
                 
-                # Load model and get metrics
-                from agent_interactive import load_model
-                model, metadata = load_model(model_id)
-                
-                if metadata:
-                    mae = metadata.get('mae', float('inf'))
-                    rmse = metadata.get('rmse', float('inf'))
-                    r2 = metadata.get('r2_score', 0)
+                # Extract metrics from result
+                if result_dict and 'metadata' in result_dict:
+                    metadata = result_dict['metadata']
+                    filepath = result_dict['filepath']
+                    
+                    # Get validation metrics
+                    val_mae = metadata.get('val_mae', float('inf'))
+                    val_rmse = metadata.get('val_rmse', float('inf'))
                     
                     # Store result
                     result = {
                         'params': params,
-                        'model_id': model_id,
-                        'mae': mae,
-                        'rmse': rmse,
-                        'r2': r2,
-                        'score': mae  # Use MAE as primary metric
+                        'filepath': filepath,
+                        'val_mae': val_mae,
+                        'val_rmse': val_rmse,
+                        'score': val_mae  # Use validation MAE as primary metric
                     }
                     
                     self.results.append(result)
                     
                     # Update best if better
-                    if mae < self.best_score:
-                        self.best_score = mae
+                    if val_mae < self.best_score:
+                        self.best_score = val_mae
                         self.best_params = params
-                        self.best_model_id = model_id
+                        self.best_model_id = filepath
             
             except Exception as e:
                 st.warning(f"Failed for params {params}: {str(e)}")
