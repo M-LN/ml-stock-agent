@@ -28,48 +28,47 @@ st.markdown("**Overview af alle modeller med leaderboards og performance trends*
 # Add tabs for different dashboard views
 main_tab1, main_tab2, main_tab3, main_tab4 = st.tabs(["📊 Model Performance", "🎯 Live Tracking", "⚠️ Alerts & Retirement", "⚙️ Update Data"])
 
-# Load all training logs
-logs_dir = "logs"
-models_dir = "models"
+# Load all models from saved_models directory
+models_dir = "saved_models"
 
 all_models = []
 
-if os.path.exists(logs_dir):
-    for log_file in os.listdir(logs_dir):
-        if log_file.endswith('_training.json'):
+if os.path.exists(models_dir):
+    for metadata_file in os.listdir(models_dir):
+        if metadata_file.endswith('_metadata.json'):
             try:
-                with open(os.path.join(logs_dir, log_file), 'r') as f:
+                with open(os.path.join(models_dir, metadata_file), 'r') as f:
                     log_data = json.load(f)
                 
-                # Check if model file exists
-                model_id = log_data.get('model_id', log_file.replace('_training.json', ''))
-                model_file_pkl = os.path.join(models_dir, f"{model_id}.pkl")
-                model_file_h5 = os.path.join(models_dir, f"{model_id}.h5")
+                # Extract model_id from filename
+                model_id = metadata_file.replace('_metadata.json', '')
+                model_file = os.path.join(models_dir, f"{model_id}.pkl")
                 
-                if os.path.exists(model_file_pkl) or os.path.exists(model_file_h5):
-                    # Get metrics
-                    metrics = log_data.get('final_metrics', log_data.get('metrics', {}))
-                    data_stats = log_data.get('data_stats', log_data.get('data_info', {}))
+                # Check if model file exists
+                if os.path.exists(model_file):
+                    # Get metrics from metadata
+                    metadata = log_data.get('metadata', {})
                     
-                    train_mae = metrics.get('train_mae', 0)
-                    val_mae = metrics.get('val_mae', 0)
+                    train_mae = metadata.get('train_mae', 0)
+                    val_mae = metadata.get('val_mae', 0)
                     gen_gap = ((val_mae - train_mae) / train_mae * 100) if train_mae > 0 else 0
                     
                     all_models.append({
                         'model_id': model_id,
                         'model_type': log_data.get('model_type', 'unknown').upper(),
                         'symbol': log_data.get('symbol', 'N/A'),
-                        'version': log_data.get('version', 1),
-                        'description': log_data.get('description', ''),
+                        'version': 1,
+                        'description': f"{metadata.get('n_estimators', metadata.get('units', 'N/A'))} params, window={metadata.get('window', 'N/A')}, horizon={metadata.get('horizon', 'N/A')}",
                         'train_mae': train_mae,
                         'val_mae': val_mae,
                         'gen_gap': gen_gap,
-                        'samples': data_stats.get('training_samples', 0),
+                        'samples': metadata.get('training_samples', 0),
                         'timestamp': log_data.get('timestamp', ''),
                         'deployed': log_data.get('deployed', False),
-                        'training_time': log_data.get('training_time', 0)
+                        'training_time': 0
                     })
             except Exception as e:
+                st.error(f"Error loading {metadata_file}: {str(e)}")
                 continue
 
 if not all_models:
