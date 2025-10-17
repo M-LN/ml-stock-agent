@@ -18,6 +18,7 @@ from agent_interactive import (
     MODEL_DIR
 )
 from storage_manager import StorageManager, get_stock_data_cached, clear_all_caches
+from model_validator import ModelValidator, display_validation_report
 
 st.set_page_config(page_title="Model Management", page_icon="🔧", layout="wide")
 
@@ -180,8 +181,40 @@ with tab1:
                     st.error(f"❌ Fejl: {str(e)}")
                     st.stop()
             
+            # Validate data and parameters
+            st.markdown("---")
+            validator = ModelValidator(data, model_type, train_symbol)
+            
+            # Collect current parameters
+            current_params = {'window': window, 'horizon': horizon}
+            if model_type == "Random Forest":
+                current_params.update({'n_estimators': n_estimators, 'max_depth': max_depth})
+            elif model_type == "XGBoost":
+                current_params.update({'n_estimators': n_estimators, 'max_depth': max_depth, 'learning_rate': learning_rate})
+            elif model_type == "LSTM":
+                current_params.update({'sequence_length': window, 'lstm_units': 50, 'epochs': epochs, 'batch_size': 32})
+            
+            # Generate validation report
+            validation_report = validator.generate_training_report(current_params)
+            display_validation_report(validation_report, current_params, model_type)
+            
+            # Check if there are critical issues
+            if len(validation_report['data_quality']['issues']) > 0:
+                st.warning("⚠️ Critical issues detected. Training may not produce reliable results.")
+                proceed = st.checkbox("I understand the risks and want to proceed anyway")
+                if not proceed:
+                    st.stop()
+            
+            st.markdown("---")
+            st.markdown("### 🏋️ Training Model")
+            
+            # Confirmation button after seeing validation
+            if not st.button("✅ Confirm and Start Training", type="primary"):
+                st.info("👆 Review the validation report above, then click to start training")
+                st.stop()
+            
             # Train model
-            with st.spinner(f"🏋️ Træner {model_type} model..."):
+            with st.spinner(f"🏋️ Træner {model_type} model... (Est. {int(validation_report['estimated_time'])}s)"):
                 try:
                     if model_type == "Random Forest":
                         result = train_and_save_rf(
