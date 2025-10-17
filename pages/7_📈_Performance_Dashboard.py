@@ -13,6 +13,12 @@ from prediction_tracker import (
     get_symbol_live_performance,
     update_predictions_with_actuals
 )
+from advanced_prediction_tracker import (
+    update_predictions_with_alerts,
+    suggest_model_retirement,
+    ALERT_THRESHOLDS,
+    check_prediction_performance
+)
 
 st.set_page_config(page_title="Performance Dashboard", page_icon="📈", layout="wide")
 
@@ -20,7 +26,7 @@ st.title("📈 Performance Dashboard")
 st.markdown("**Overview af alle modeller med leaderboards og performance trends**")
 
 # Add tabs for different dashboard views
-main_tab1, main_tab2, main_tab3 = st.tabs(["📊 Model Performance", "🎯 Live Tracking", "⚙️ Update Data"])
+main_tab1, main_tab2, main_tab3, main_tab4 = st.tabs(["📊 Model Performance", "🎯 Live Tracking", "⚠️ Alerts & Retirement", "⚙️ Update Data"])
 
 # Load all training logs
 logs_dir = "logs"
@@ -445,6 +451,31 @@ with main_tab2:
                         marker=dict(size=8)
                     ))
                     
+                    # Add confidence intervals if available
+                    confidence_bounds = pred.get('confidence_bounds')
+                    if confidence_bounds:
+                        # Upper bound
+                        fig.add_trace(go.Scatter(
+                            x=days,
+                            y=confidence_bounds['upper'],
+                            mode='lines',
+                            name='Upper Bound (95%)',
+                            line=dict(color='lightblue', width=1, dash='dot'),
+                            showlegend=True
+                        ))
+                        
+                        # Lower bound
+                        fig.add_trace(go.Scatter(
+                            x=days,
+                            y=confidence_bounds['lower'],
+                            mode='lines',
+                            name='Lower Bound (95%)',
+                            line=dict(color='lightblue', width=1, dash='dot'),
+                            fill='tonexty',
+                            fillcolor='rgba(173, 216, 230, 0.2)',
+                            showlegend=True
+                        ))
+                    
                     # Add actuals if available
                     actual_prices = pred.get('actual_prices', [])
                     if any(a is not None for a in actual_prices):
@@ -453,7 +484,7 @@ with main_tab2:
                             y=actual_prices,
                             mode='lines+markers',
                             name='Actual',
-                            line=dict(color='green'),
+                            line=dict(color='green', width=2),
                             marker=dict(size=8)
                         ))
                     
@@ -476,6 +507,18 @@ with main_tab2:
                     if pred.get('mae') is not None:
                         st.markdown(f"- **MAE: ${pred['mae']:.2f}**")
                         st.markdown(f"- **RMSE: ${pred.get('rmse', 0):.2f}**")
+                    
+                    # Show alerts if any
+                    alerts = pred.get('alerts_triggered', [])
+                    if alerts:
+                        st.warning("**⚠️ Alerts:**")
+                        for alert in alerts:
+                            st.markdown(f"- {alert}")
+                    
+                    # Show confidence info
+                    if confidence_bounds:
+                        std = confidence_bounds.get('std', 0)
+                        st.info(f"📊 Confidence: ±${std:.2f} (95%)")
                     
                     # Show target dates vs actuals table
                     st.markdown("**Details:**")
@@ -533,26 +576,257 @@ with main_tab2:
             comp_df = pd.DataFrame(comparison_data)
             st.dataframe(comp_df, use_container_width=True, hide_index=True)
 
-# ========== TAB 3: UPDATE DATA ==========
+# ========== TAB 3: ALERTS & RETIREMENT ==========
 with main_tab3:
-    st.markdown("## ⚙️ Update Prediction Data")
-    st.markdown("Hent nye aktuelle priser for at opdatere prediction tracking")
+    st.markdown("## ⚠️ Performance Alerts & Model Retirement")
+    st.markdown("Automatisk overvågning og anbefalinger baseret på live performance")
     
-    if st.button("🔄 Update All Predictions", type="primary"):
-        with st.spinner("Opdaterer predictions med faktiske priser..."):
-            updated_count = update_predictions_with_actuals()
-            st.success(f"✅ Opdateret {updated_count} predictions!")
-            st.rerun()
+    # Alert thresholds display
+    with st.expander("📊 Alert Thresholds (Click to modify)"):
+        st.markdown("### Current Thresholds:")
+        col1, col2 = st.columns(2)
+        with col1:
+            st.metric("Poor MAE Threshold", f"${ALERT_THRESHOLDS['poor_mae']}")
+            st.metric("Poor MAPE Threshold", f"{ALERT_THRESHOLDS['poor_mape']}%")
+        with col2:
+            st.metric("Direction Accuracy Min", f"{ALERT_THRESHOLDS['direction_accuracy']}%")
+            st.metric("Consecutive Failures", ALERT_THRESHOLDS['consecutive_failures'])
+    
+    st.divider()
+    
+    # Recent alerts
+    st.markdown("### 🚨 Recent Alerts")
+    
+    all_predictions = get_all_predictions()
+    recent_alerts = []
+    
+    for pred in all_predictions:
+        alerts = pred.get('alerts_triggered', [])
+        if alerts and pred.get('status') == 'complete':
+            recent_alerts.append({
+                'Model ID': pred['model_id'][:30] + '...',
+                'Symbol': pred['symbol'],
+                'Date': pred['prediction_date'],
+                'MAE': f"${pred.get('mae', 0):.2f}",
+                'Alerts': len(alerts),
+                'Details': ' | '.join(alerts)
+            })
+    
+    if recent_alerts:
+        alerts_df = pd.DataFrame(recent_alerts)
+        st.dataframe(alerts_df, use_container_width=True, hide_index=True)
+        
+        # Alert summary
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            st.metric("Total Alerts", len(recent_alerts))
+        with col2:
+            affected_models = len(set([a['Model ID'] for a in recent_alerts]))
+            st.metric("Affected Models", affected_models)
+        with col3:
+            avg_mae = sum([float(a['MAE'].replace('$', '')) for a in recent_alerts]) / len(recent_alerts)
+            st.metric("Avg MAE (alerted)", f"${avg_mae:.2f}")
+    else:
+        st.success("✅ No performance alerts! All models performing within thresholds.")
+    
+    st.divider()
+    
+    # Model retirement suggestions
+    st.markdown("### 🔄 Model Retirement Suggestions")
+    st.markdown("Models recommended for retirement based on poor live performance")
+    
+    if st.button("🔍 Analyze Models for Retirement", type="primary"):
+        with st.spinner("Analyzing model performance..."):
+            retirement_suggestions = suggest_model_retirement()
+            
+            if retirement_suggestions:
+                st.warning(f"⚠️ **{len(retirement_suggestions)} models** recommended for retirement:")
+                
+                for i, suggestion in enumerate(retirement_suggestions):
+                    with st.expander(f"#{i+1}: {suggestion['model_type'].upper()} - {suggestion['symbol']} (Score: {suggestion['retirement_score']}/10)"):
+                        col_a, col_b = st.columns([2, 1])
+                        
+                        with col_a:
+                            st.markdown("**Reasons for Retirement:**")
+                            for reason in suggestion['reasons']:
+                                st.markdown(f"- {reason}")
+                            
+                            st.markdown(f"\n**Performance Stats:**")
+                            st.markdown(f"- Average MAE: ${suggestion['avg_mae']:.2f}")
+                            st.markdown(f"- Recent MAE: ${suggestion['recent_mae']:.2f}")
+                            st.markdown(f"- Total Predictions: {suggestion['prediction_count']}")
+                            st.markdown(f"- Alerts Triggered: {suggestion['alerts_count']}")
+                        
+                        with col_b:
+                            st.markdown("**Actions:**")
+                            st.markdown(f"Model ID: `{suggestion['model_id'][:20]}...`")
+                            
+                            if st.button(f"🗑️ Archive Model", key=f"archive_{i}"):
+                                st.info("Archive functionality coming soon...")
+                            
+                            if st.button(f"🔄 Retrain Model", key=f"retrain_{i}"):
+                                st.info("Navigate to Model Management → ML Mentor for retraining")
+                
+                # Retirement urgency chart
+                st.markdown("### 📊 Retirement Urgency")
+                
+                retirement_df = pd.DataFrame(retirement_suggestions)
+                
+                fig = px.bar(
+                    retirement_df,
+                    x='model_type',
+                    y='retirement_score',
+                    color='symbol',
+                    title='Retirement Score by Model Type',
+                    labels={'retirement_score': 'Retirement Score', 'model_type': 'Model Type'},
+                    text='retirement_score'
+                )
+                
+                fig.update_traces(texttemplate='%{text}', textposition='outside')
+                fig.update_layout(height=400)
+                
+                st.plotly_chart(fig, use_container_width=True)
+            else:
+                st.success("✅ No models recommended for retirement! All models performing well.")
+    
+    st.divider()
+    
+    # Performance trends
+    st.markdown("### 📈 Performance Trends Over Time")
+    
+    # Group predictions by model and calculate trend
+    model_trends = {}
+    
+    for pred in all_predictions:
+        if pred.get('status') != 'complete' or pred.get('mae') is None:
+            continue
+        
+        model_id = pred['model_id']
+        if model_id not in model_trends:
+            model_trends[model_id] = {
+                'dates': [],
+                'maes': [],
+                'symbol': pred['symbol'],
+                'model_type': pred['model_type']
+            }
+        
+        model_trends[model_id]['dates'].append(pred['prediction_date'])
+        model_trends[model_id]['maes'].append(pred['mae'])
+    
+    if model_trends:
+        # Select model to view trend
+        model_options = {f"{v['model_type'].upper()} - {v['symbol']} ({k[:15]}...)": k 
+                        for k, v in model_trends.items()}
+        
+        selected_trend_model = st.selectbox("Select Model to View Trend", list(model_options.keys()))
+        
+        if selected_trend_model:
+            model_id = model_options[selected_trend_model]
+            trend_data = model_trends[model_id]
+            
+            # Create trend chart
+            fig = go.Figure()
+            
+            fig.add_trace(go.Scatter(
+                x=trend_data['dates'],
+                y=trend_data['maes'],
+                mode='lines+markers',
+                name='MAE',
+                line=dict(color='red', width=2),
+                marker=dict(size=10)
+            ))
+            
+            # Add threshold line
+            fig.add_hline(
+                y=ALERT_THRESHOLDS['poor_mae'],
+                line_dash="dash",
+                line_color="orange",
+                annotation_text=f"Alert Threshold (${ALERT_THRESHOLDS['poor_mae']})"
+            )
+            
+            fig.update_layout(
+                title=f"Performance Trend: {selected_trend_model}",
+                xaxis_title="Prediction Date",
+                yaxis_title="MAE ($)",
+                height=400
+            )
+            
+            st.plotly_chart(fig, use_container_width=True)
+            
+            # Trend analysis
+            if len(trend_data['maes']) >= 2:
+                recent_trend = trend_data['maes'][-1] - trend_data['maes'][0]
+                if recent_trend > 0:
+                    st.warning(f"⚠️ Performance degrading: MAE increased by ${recent_trend:.2f}")
+                else:
+                    st.success(f"✅ Performance improving: MAE decreased by ${abs(recent_trend):.2f}")
+
+# ========== TAB 4: UPDATE DATA ==========
+with main_tab4:
+    st.markdown("## ⚙️ Update Prediction Data")
+    st.markdown("Hent nye aktuelle priser og check for performance alerts")
+    
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        if st.button("🔄 Update Predictions Only", type="secondary"):
+            with st.spinner("Opdaterer predictions med faktiske priser..."):
+                updated_count = update_predictions_with_actuals()
+                st.success(f"✅ Opdateret {updated_count} predictions!")
+                st.rerun()
+    
+    with col2:
+        if st.button("🚨 Update + Check Alerts", type="primary"):
+            with st.spinner("Opdaterer predictions og checker alerts..."):
+                result = update_predictions_with_alerts()
+                st.success(f"✅ Opdateret {result['updated_count']} predictions!")
+                
+                if result['alerts_count'] > 0:
+                    st.warning(f"⚠️ {result['alerts_count']} alerts triggered!")
+                    
+                    # Show alert summary
+                    for alert in result['alerts'][:5]:  # Show first 5
+                        st.error(f"**{alert['model_id'][:30]}...** ({alert['symbol']}): {', '.join(alert['alerts'])}")
+                else:
+                    st.success("✅ No new alerts!")
+                
+                st.rerun()
+    
+    st.divider()
+    
+    st.markdown("### ℹ️ Update Information")
     
     st.info("""
-    **Hvad gør denne funktion:**
+    **🔄 Update Predictions Only:**
     - Henter faktiske priser fra yfinance
     - Sammenligner med gemte predictions
     - Beregner live performance metrics (MAE, RMSE)
     - Opdaterer status (pending → complete)
     
+    **🚨 Update + Check Alerts:**
+    - Alt fra "Update Predictions Only"
+    - Checker performance mod alert thresholds
+    - Trigger alerts for dårlige predictions
+    - Gemmer alert history
+    
     **Anbefales at køre:**
-    - Dagligt for bedste tracking
-    - Efter markedet lukker
+    - Dagligt kl. 18:00 (efter markedet lukker)
     - Før du tjekker Live Tracking tab
+    - Når du vil se nye alerts
+    """)
+    
+    st.divider()
+    
+    st.markdown("### 🤖 Auto-Update (Coming Soon)")
+    st.markdown("Automatically update predictions daily at 18:00")
+    
+    # Placeholder for scheduler
+    st.info("""
+    **Auto-Update Feature** (In Development):
+    - Automatically runs update + alerts daily
+    - Scheduled for 18:00 (after market close)
+    - Sends notifications for critical alerts
+    - Keeps prediction data always current
+    
+    *This feature requires background job scheduling which is being implemented.*
     """)
