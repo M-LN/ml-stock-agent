@@ -2,12 +2,14 @@ import streamlit as st
 import yfinance as yf
 import pandas as pd
 import plotly.graph_objects as go
+from datetime import datetime
 from agent_interactive import (
     ml_forecast, ml_forecast_rf, ml_forecast_xgboost, 
     ml_forecast_prophet, ml_forecast_ensemble,
     hent_data, calculate_model_metrics, backtest_model,
     list_saved_models, load_model, predict_with_saved_model
 )
+from prediction_tracker import save_prediction
 
 st.set_page_config(page_title="ML Forecast", page_icon="🤖", layout="wide")
 
@@ -177,6 +179,31 @@ if st.button("🚀 Start Forecast", type="primary", use_container_width=True) or
                                             'Ændring': f"${change:+.2f}",
                                             'Ændring %': f"{change_pct:+.2f}%"
                                         })
+                                        
+                                        # Save prediction for tracking
+                                        try:
+                                            prediction_date = datetime.now().strftime("%Y-%m-%d")
+                                            predictions_list = [pred]
+                                            
+                                            # Extract model ID from filepath
+                                            model_id = selected_saved_model['filepath'].split('/')[-1].replace('.pkl', '').replace('.h5', '')
+                                            
+                                            save_prediction(
+                                                model_id=model_id,
+                                                symbol=symbol,
+                                                model_type=selected_saved_model['model_type'],
+                                                prediction_date=prediction_date,
+                                                predictions=predictions_list,
+                                                horizon=h_days,
+                                                metadata={
+                                                    'deployed': True,
+                                                    'current_price': float(current_price),
+                                                    'forecast_method': 'saved_model',
+                                                    'model_metadata': model_package.get('metadata', {})
+                                                }
+                                            )
+                                        except Exception as e:
+                                            pass
                             
                             if saved_results:
                                 df_saved = pd.DataFrame(saved_results)
@@ -239,6 +266,28 @@ if st.button("🚀 Start Forecast", type="primary", use_container_width=True) or
                                         'Ændring': f"${change:+.2f}",
                                         'Ændring %': f"{change_pct:+.2f}%"
                                     })
+                                    
+                                    # Save prediction for tracking
+                                    try:
+                                        prediction_date = datetime.now().strftime("%Y-%m-%d")
+                                        # Generate predictions for each day up to horizon
+                                        predictions_list = [pred]  # For now, single point prediction
+                                        
+                                        save_prediction(
+                                            model_id=f"rf_{symbol}_forecast",
+                                            symbol=symbol,
+                                            model_type='rf',
+                                            prediction_date=prediction_date,
+                                            predictions=predictions_list,
+                                            horizon=h_days,
+                                            metadata={
+                                                'window': 30,
+                                                'current_price': float(current_price),
+                                                'forecast_method': 'live_forecast'
+                                            }
+                                        )
+                                    except Exception as e:
+                                        pass  # Don't break forecast if tracking fails
                         
                         if rf_results:
                             df_rf = pd.DataFrame(rf_results)
@@ -268,6 +317,27 @@ if st.button("🚀 Start Forecast", type="primary", use_container_width=True) or
                                         'Ændring': f"${change:+.2f}",
                                         'Ændring %': f"{change_pct:+.2f}%"
                                     })
+                                    
+                                    # Save prediction for tracking
+                                    try:
+                                        prediction_date = datetime.now().strftime("%Y-%m-%d")
+                                        predictions_list = [pred]
+                                        
+                                        save_prediction(
+                                            model_id=f"xgboost_{symbol}_forecast",
+                                            symbol=symbol,
+                                            model_type='xgboost',
+                                            prediction_date=prediction_date,
+                                            predictions=predictions_list,
+                                            horizon=h_days,
+                                            metadata={
+                                                'window': 30,
+                                                'current_price': float(current_price),
+                                                'forecast_method': 'live_forecast'
+                                            }
+                                        )
+                                    except Exception as e:
+                                        pass
                         
                         if xgb_results:
                             df_xgb = pd.DataFrame(xgb_results)
@@ -339,6 +409,9 @@ if st.button("🚀 Start Forecast", type="primary", use_container_width=True) or
                             st.warning("⚠️ Ensemble kunne ikke generere forudsigelser")
                     
                     st.success("✅ Forecast komplet!")
+                    
+                    # Show tracking info
+                    st.info("📊 **Predictions tracked!** Gå til Performance Dashboard → Live Tracking for at følge hvordan disse predictions performer over tid.")
                     
             except Exception as e:
                 st.error(f"❌ Fejl: {e}")
