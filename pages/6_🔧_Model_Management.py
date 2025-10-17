@@ -1049,10 +1049,18 @@ with tab5:
                                        options=["Small (fast)", "Medium", "Large (slow)"],
                                        value="Small (fast)")
         
+        # Convert display name to key
+        search_size_map = {
+            "Small (fast)": "small",
+            "Medium": "medium",
+            "Large (slow)": "large"
+        }
+        search_space_key = search_size_map[search_size]
+        
         # Preview search space
         with st.expander("🔍 Preview Search Space"):
             if gs_model_type in SEARCH_SPACES:
-                space = SEARCH_SPACES[gs_model_type]
+                space = SEARCH_SPACES[gs_model_type].get(search_space_key, {})
                 st.json(space)
                 
                 # Calculate combinations
@@ -1076,9 +1084,8 @@ with tab5:
                     if data.empty:
                         st.error(f"No data found for {gs_symbol}")
                     else:
-                        # Initialize engine
-                        search_space = SEARCH_SPACES.get(gs_model_type, {})
-                        engine = GridSearchEngine(gs_model_type, gs_symbol, search_space)
+                        # Initialize engine with correct search_space_key
+                        engine = GridSearchEngine(gs_model_type, gs_symbol, search_space_key)
                         
                         # Progress tracking
                         progress_bar = st.progress(0)
