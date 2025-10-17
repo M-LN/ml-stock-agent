@@ -7,11 +7,20 @@ import os
 import json
 from datetime import datetime
 from collections import defaultdict
+from prediction_tracker import (
+    get_all_predictions,
+    get_model_live_performance,
+    get_symbol_live_performance,
+    update_predictions_with_actuals
+)
 
 st.set_page_config(page_title="Performance Dashboard", page_icon="📈", layout="wide")
 
 st.title("📈 Performance Dashboard")
 st.markdown("**Overview af alle modeller med leaderboards og performance trends**")
+
+# Add tabs for different dashboard views
+main_tab1, main_tab2, main_tab3 = st.tabs(["📊 Model Performance", "🎯 Live Tracking", "⚙️ Update Data"])
 
 # Load all training logs
 logs_dir = "logs"
@@ -58,14 +67,19 @@ if os.path.exists(logs_dir):
                 continue
 
 if not all_models:
-    st.info("📭 Ingen modeller fundet. Træn nogle modeller først!")
+    with main_tab1:
+        st.info("📭 Ingen modeller fundet. Træn nogle modeller først!")
+    with main_tab2:
+        st.info("📭 Ingen modeller fundet. Træn nogle modeller først!")
     st.stop()
 
 # Convert to DataFrame
 df = pd.DataFrame(all_models)
 
-# ========== SUMMARY STATS ==========
-st.markdown("## 📊 Summary Statistics")
+# ========== TAB 1: MODEL PERFORMANCE ==========
+with main_tab1:
+    # ========== SUMMARY STATS ==========
+    st.markdown("## 📊 Summary Statistics")
 
 col1, col2, col3, col4, col5 = st.columns(5)
 
@@ -336,15 +350,209 @@ with col2:
         
         st.info("💡 Go to Model Management → Deploy")
 
-with col3:
-    st.markdown("### 🔄 Retraining Suggestions")
-    
-    # Find models with high gen gap
-    high_gen_gap = df[df['gen_gap'] > 50].nsmallest(5, 'val_mae')
-    
-    if len(high_gen_gap) > 0:
-        st.warning(f"**{len(high_gen_gap)} models** with high overfitting:")
-        for _, row in high_gen_gap.head(3).iterrows():
-            st.markdown(f"- {row['model_type']} {row['symbol']} v{row['version']}: {row['gen_gap']:.0f}% gap")
+    with col3:
+        st.markdown("### 🔄 Retraining Suggestions")
         
-        st.info("💡 Go to ML Mentor for recommendations")
+        # Find models with high gen gap
+        high_gen_gap = df[df['gen_gap'] > 50].nsmallest(5, 'val_mae')
+        
+        if len(high_gen_gap) > 0:
+            st.warning(f"**{len(high_gen_gap)} models** with high overfitting:")
+            for _, row in high_gen_gap.head(3).iterrows():
+                st.markdown(f"- {row['model_type']} {row['symbol']} v{row['version']}: {row['gen_gap']:.0f}% gap")
+            
+            st.info("💡 Go to ML Mentor for recommendations")
+
+# ========== TAB 2: LIVE TRACKING ==========
+with main_tab2:
+    st.markdown("## 🎯 Live Model Performance Tracking")
+    st.markdown("Track hvordan dine modeller performer med **faktiske priser** over tid")
+    
+    # Get all predictions
+    all_predictions = get_all_predictions()
+    
+    if not all_predictions:
+        st.info("📭 Ingen predictions tracked endnu. Træn en model og lav predictions for at se live performance.")
+        st.markdown("""
+        ### 📝 Sådan fungerer Live Tracking:
+        
+        1. **Træn en model** i Model Management
+        2. **Lav predictions** med modellen
+        3. **Predictions gemmes** automatisk
+        4. **Kom tilbage hertil** for at se hvordan modellen performer mod faktiske priser
+        5. **Sammenlign** flere modeller's live performance
+        """)
+    else:
+        # Group by symbol
+        symbols = list(set([p['symbol'] for p in all_predictions]))
+        
+        st.markdown(f"### 📊 Tracking **{len(all_predictions)}** predictions across **{len(symbols)}** symbols")
+        
+        # Select symbol
+        selected_symbol = st.selectbox("Vælg Symbol", sorted(symbols))
+        
+        # Get performance for this symbol
+        symbol_predictions = [p for p in all_predictions if p['symbol'] == selected_symbol]
+        
+        # Show stats
+        col1, col2, col3, col4 = st.columns(4)
+        
+        with col1:
+            total_preds = len(symbol_predictions)
+            st.metric("Total Predictions", total_preds)
+        
+        with col2:
+            complete_preds = len([p for p in symbol_predictions if p.get('status') == 'complete'])
+            st.metric("Completed", complete_preds)
+        
+        with col3:
+            pending_preds = len([p for p in symbol_predictions if p.get('status') == 'pending'])
+            st.metric("Pending", pending_preds)
+        
+        with col4:
+            # Average MAE for completed predictions
+            maes = [p.get('mae') for p in symbol_predictions if p.get('mae') is not None]
+            avg_mae = sum(maes) / len(maes) if maes else 0
+            st.metric("Avg Live MAE", f"${avg_mae:.2f}" if avg_mae > 0 else "N/A")
+        
+        st.divider()
+        
+        # Show each prediction
+        st.markdown("### 📈 Prediction History")
+        
+        # Sort by timestamp
+        symbol_predictions.sort(key=lambda x: x['timestamp'], reverse=True)
+        
+        for i, pred in enumerate(symbol_predictions[:10]):  # Show last 10
+            status_icon = {"pending": "⏳", "partial": "⏱️", "complete": "✅"}.get(pred['status'], "❓")
+            
+            with st.expander(f"{status_icon} **{pred['model_type'].upper()}** - {pred['prediction_date']} ({pred['status']})"):
+                col_a, col_b = st.columns([2, 1])
+                
+                with col_a:
+                    # Create prediction vs actual chart
+                    fig = go.Figure()
+                    
+                    days = list(range(1, len(pred['predictions']) + 1))
+                    
+                    # Add predictions
+                    fig.add_trace(go.Scatter(
+                        x=days,
+                        y=pred['predictions'],
+                        mode='lines+markers',
+                        name='Predicted',
+                        line=dict(color='blue', dash='dash'),
+                        marker=dict(size=8)
+                    ))
+                    
+                    # Add actuals if available
+                    actual_prices = pred.get('actual_prices', [])
+                    if any(a is not None for a in actual_prices):
+                        fig.add_trace(go.Scatter(
+                            x=days,
+                            y=actual_prices,
+                            mode='lines+markers',
+                            name='Actual',
+                            line=dict(color='green'),
+                            marker=dict(size=8)
+                        ))
+                    
+                    fig.update_layout(
+                        title=f'Prediction vs Actual - {pred["horizon"]} days horizon',
+                        xaxis_title='Day',
+                        yaxis_title='Price ($)',
+                        height=300,
+                        hovermode='x unified'
+                    )
+                    
+                    st.plotly_chart(fig, use_container_width=True)
+                
+                with col_b:
+                    st.markdown("**Info:**")
+                    st.markdown(f"- Model: `{pred['model_id'][:20]}...`")
+                    st.markdown(f"- Horizon: {pred['horizon']} days")
+                    st.markdown(f"- Predicted: {pred['prediction_date']}")
+                    
+                    if pred.get('mae') is not None:
+                        st.markdown(f"- **MAE: ${pred['mae']:.2f}**")
+                        st.markdown(f"- **RMSE: ${pred.get('rmse', 0):.2f}**")
+                    
+                    # Show target dates vs actuals table
+                    st.markdown("**Details:**")
+                    details_df = pd.DataFrame({
+                        'Date': pred['target_dates'],
+                        'Predicted': [f"${p:.2f}" for p in pred['predictions']],
+                        'Actual': [f"${a:.2f}" if a is not None else "Pending" for a in actual_prices],
+                        'Error': [f"${abs(p-a):.2f}" if a is not None else "-" 
+                                 for p, a in zip(pred['predictions'], actual_prices)]
+                    })
+                    st.dataframe(details_df, use_container_width=True, hide_index=True)
+        
+        st.divider()
+        
+        # Model comparison for this symbol
+        st.markdown("### 🏆 Model Comparison - Live Performance")
+        
+        # Group predictions by model
+        model_performance = {}
+        for pred in symbol_predictions:
+            model_id = pred['model_id']
+            if model_id not in model_performance:
+                model_performance[model_id] = {
+                    'model_id': model_id,
+                    'model_type': pred['model_type'],
+                    'prediction_count': 0,
+                    'completed_count': 0,
+                    'total_mae': 0,
+                    'mae_count': 0
+                }
+            
+            model_performance[model_id]['prediction_count'] += 1
+            
+            if pred.get('status') == 'complete':
+                model_performance[model_id]['completed_count'] += 1
+            
+            if pred.get('mae') is not None:
+                model_performance[model_id]['total_mae'] += pred['mae']
+                model_performance[model_id]['mae_count'] += 1
+        
+        # Calculate averages
+        comparison_data = []
+        for model_id, perf in model_performance.items():
+            avg_mae = perf['total_mae'] / perf['mae_count'] if perf['mae_count'] > 0 else None
+            
+            comparison_data.append({
+                'Model ID': model_id[:30] + '...',
+                'Type': perf['model_type'].upper(),
+                'Total Predictions': perf['prediction_count'],
+                'Completed': perf['completed_count'],
+                'Avg Live MAE': f"${avg_mae:.2f}" if avg_mae is not None else "N/A"
+            })
+        
+        if comparison_data:
+            comp_df = pd.DataFrame(comparison_data)
+            st.dataframe(comp_df, use_container_width=True, hide_index=True)
+
+# ========== TAB 3: UPDATE DATA ==========
+with main_tab3:
+    st.markdown("## ⚙️ Update Prediction Data")
+    st.markdown("Hent nye aktuelle priser for at opdatere prediction tracking")
+    
+    if st.button("🔄 Update All Predictions", type="primary"):
+        with st.spinner("Opdaterer predictions med faktiske priser..."):
+            updated_count = update_predictions_with_actuals()
+            st.success(f"✅ Opdateret {updated_count} predictions!")
+            st.rerun()
+    
+    st.info("""
+    **Hvad gør denne funktion:**
+    - Henter faktiske priser fra yfinance
+    - Sammenligner med gemte predictions
+    - Beregner live performance metrics (MAE, RMSE)
+    - Opdaterer status (pending → complete)
+    
+    **Anbefales at køre:**
+    - Dagligt for bedste tracking
+    - Efter markedet lukker
+    - Før du tjekker Live Tracking tab
+    """)
