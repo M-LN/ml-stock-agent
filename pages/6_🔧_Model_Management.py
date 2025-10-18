@@ -24,6 +24,19 @@ from agent_interactive import (
 from storage_manager import StorageManager, get_stock_data_cached, clear_all_caches
 from model_validator import ModelValidator, display_validation_report
 
+# Phase 4: Import drift detection and A/B testing
+try:
+    from model_drift_detector import ModelDriftDetector
+    DRIFT_DETECTION_AVAILABLE = True
+except ImportError:
+    DRIFT_DETECTION_AVAILABLE = False
+
+try:
+    from ab_testing import ABTestingFramework
+    AB_TESTING_AVAILABLE = True
+except ImportError:
+    AB_TESTING_AVAILABLE = False
+
 st.set_page_config(page_title="Model Management", page_icon="🔧", layout="wide")
 
 st.title("🔧 ML Model Management")
@@ -98,7 +111,15 @@ storage_manager = StorageManager(storage_type=storage_type)
 st.divider()
 
 # Tabs for different functions
-tab1, tab2, tab3, tab4, tab5 = st.tabs(["🏋️ Træn Nye Modeller", "📂 Gemte Modeller", "🔮 Brug Gemt Model", "🧠 ML Mentor", "🎛️ Grid Search"])
+tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs([
+    "🏋️ Træn Nye Modeller", 
+    "📂 Gemte Modeller", 
+    "🔮 Brug Gemt Model", 
+    "🧠 ML Mentor", 
+    "🎛️ Grid Search",
+    "🔍 Drift Detection",  # NEW
+    "🆚 A/B Testing"        # NEW
+])
 
 # ==================== TAB 1: TRAIN NEW MODELS ====================
 with tab1:
@@ -1249,3 +1270,445 @@ with tab5:
     
     except ImportError as e:
         st.error(f"❌ Grid Search dependencies not found: {e}")
+
+# ==================== TAB 6: DRIFT DETECTION ====================
+with tab6:
+    st.subheader("🔍 Model Drift Detection")
+    st.markdown("Detect when models need retraining due to data or performance drift")
+    
+    if not DRIFT_DETECTION_AVAILABLE:
+        st.error("❌ Drift detection not available. Install dependencies: `pip install scipy`")
+    else:
+        # Model selection
+        col1, col2 = st.columns([1, 1])
+        
+        with col1:
+            drift_symbol = st.text_input("Stock Symbol", value="AAPL", key="drift_symbol")
+            
+            # Get models for this symbol
+            symbol_models = [m for m in all_models if m['symbol'] == drift_symbol]
+            
+            if not symbol_models:
+                st.warning(f"⚠️ No models found for {drift_symbol}")
+            else:
+                model_options = [
+                    f"{m['model_type'].upper()} - {m['timestamp'][:8]}"
+                    for m in symbol_models
+                ]
+                
+                selected_idx = st.selectbox(
+                    "Select Model to Check",
+                    range(len(model_options)),
+                    format_func=lambda x: model_options[x],
+                    key="drift_model_select"
+                )
+                
+                selected_model = symbol_models[selected_idx]
+                model_id = selected_model['model_id']
+        
+        with col2:
+            st.markdown("### ⚙️ Detection Settings")
+            drift_threshold = st.slider(
+                "PSI Drift Threshold",
+                0.1, 0.5, 0.25,
+                help="PSI > 0.25 indicates significant drift"
+            )
+            
+            perf_threshold = st.slider(
+                "Performance Degradation %",
+                10, 50, 20,
+                help="Alert if MAE increases by this percentage"
+            )
+        
+        st.divider()
+        
+        # Run drift detection
+        if st.button("🔍 Check for Drift", type="primary", use_container_width=True):
+            with st.spinner(f"Analyzing drift for {drift_symbol}..."):
+                try:
+                    detector = ModelDriftDetector(
+                        drift_threshold=drift_threshold / 100,
+                        performance_threshold=perf_threshold / 100
+                    )
+                    
+                    results = detector.comprehensive_drift_check(
+                        symbol=drift_symbol,
+                        model_id=model_id
+                    )
+                    
+                    # Display results
+                    st.markdown("### 📊 Drift Detection Results")
+                    
+                    # Overall status
+                    overall = results['overall']
+                    if overall['drift_detected']:
+                        st.error(f"🚨 **DRIFT DETECTED** - Priority: {overall['priority']}")
+                        st.warning(f"**Recommendation:** {overall['recommendation']}")
+                        
+                        if overall['reasons']:
+                            st.markdown("**Reasons:**")
+                            for reason in overall['reasons']:
+                                st.markdown(f"- {reason}")
+                    else:
+                        st.success("✅ **NO DRIFT DETECTED** - Model is stable")
+                        st.info("Continue monitoring. No action needed.")
+                    
+                    st.divider()
+                    
+                    # Detailed results
+                    col1, col2 = st.columns(2)
+                    
+                    with col1:
+                        st.markdown("### 🔬 Statistical Tests")
+                        
+                        if 'concept_drift' in results['tests']:
+                            cd = results['tests']['concept_drift']
+                            
+                            # KS Test
+                            ks = cd['ks_test']
+                            ks_status = "⚠️ DRIFT" if ks['drift_detected'] else "✅ OK"
+                            st.metric(
+                                "KS Test",
+                                ks_status,
+                                f"p-value: {ks['p_value']:.4f}",
+                                delta_color="inverse"
+                            )
+                            
+                            # PSI Test
+                            psi = cd['psi_test']
+                            psi_status = "⚠️ DRIFT" if psi['drift_detected'] else "✅ OK"
+                            st.metric(
+                                "PSI Test",
+                                psi_status,
+                                f"PSI: {psi['psi']:.4f}",
+                                delta_color="inverse"
+                            )
+                    
+                    with col2:
+                        st.markdown("### 📈 Market Metrics")
+                        
+                        if 'concept_drift' in results['tests']:
+                            vol = cd['volatility_change']
+                            
+                            st.metric(
+                                "Early Volatility",
+                                f"{vol['early_volatility']:.1%}"
+                            )
+                            
+                            st.metric(
+                                "Recent Volatility",
+                                f"{vol['recent_volatility']:.1%}",
+                                f"{vol['change_pct']:+.1f}%"
+                            )
+                            
+                            if vol['significant_change']:
+                                st.warning("⚠️ Significant volatility change detected")
+                    
+                    # Performance degradation (if available)
+                    if 'performance' in results['tests']:
+                        st.divider()
+                        st.markdown("### 📊 Performance Analysis")
+                        
+                        perf = results['tests']['performance']
+                        
+                        col1, col2, col3 = st.columns(3)
+                        
+                        with col1:
+                            st.metric(
+                                "Training MAE",
+                                f"${perf['train_mae']:.2f}"
+                            )
+                        
+                        with col2:
+                            st.metric(
+                                "Recent MAE",
+                                f"${perf['recent_mae']:.2f}",
+                                f"{perf['degradation_pct']:+.1f}%"
+                            )
+                        
+                        with col3:
+                            if perf['degraded']:
+                                st.error("⚠️ Degraded")
+                            else:
+                                st.success("✅ Stable")
+                        
+                        st.info(f"💡 {perf['interpretation']}")
+                        st.markdown(f"**Recommendation:** {perf['recommendation']}")
+                    
+                    # Retraining recommendation
+                    if detector.should_retrain(results):
+                        st.divider()
+                        st.error("### 🔄 RETRAINING RECOMMENDED")
+                        st.markdown("""
+                        The model shows signs of drift and should be retrained:
+                        1. Go to **Træn Nye Modeller** tab
+                        2. Train a new model with recent data
+                        3. Compare with this model using A/B Testing
+                        4. Deploy the better performing model
+                        """)
+                        
+                        if st.button("🚀 Go to Training", key="goto_training"):
+                            st.info("Navigate to 'Træn Nye Modeller' tab above")
+                
+                except Exception as e:
+                    st.error(f"❌ Drift detection failed: {str(e)}")
+                    st.exception(e)
+
+# ==================== TAB 7: A/B TESTING ====================
+with tab7:
+    st.subheader("🆚 A/B Testing Framework")
+    st.markdown("Compare multiple models scientifically and select the best performer")
+    
+    if not AB_TESTING_AVAILABLE:
+        st.error("❌ A/B testing not available.")
+    else:
+        # Sub-tabs for create, view, analyze
+        ab_tab1, ab_tab2, ab_tab3 = st.tabs(["➕ Create Test", "📊 Active Tests", "📈 Analyze Results"])
+        
+        # CREATE TEST
+        with ab_tab1:
+            st.markdown("### Create New A/B Test")
+            
+            col1, col2 = st.columns([1, 1])
+            
+            with col1:
+                test_name = st.text_input(
+                    "Test Name",
+                    value="model_comparison",
+                    help="Unique name for this test"
+                )
+                
+                test_symbol = st.text_input("Stock Symbol", value="AAPL", key="ab_symbol")
+                
+                test_duration = st.slider(
+                    "Test Duration (days)",
+                    7, 90, 30,
+                    help="How long to run the test"
+                )
+            
+            with col2:
+                st.markdown("### Select Models to Test")
+                
+                # Get models for this symbol
+                symbol_models = [m for m in all_models if m['symbol'] == test_symbol]
+                
+                if len(symbol_models) < 2:
+                    st.warning(f"⚠️ Need at least 2 models for {test_symbol} to run A/B test")
+                else:
+                    # Model A
+                    model_a_options = [
+                        f"{m['model_type'].upper()} - {m['timestamp'][:8]}"
+                        for m in symbol_models
+                    ]
+                    
+                    model_a_idx = st.selectbox(
+                        "Model A",
+                        range(len(model_a_options)),
+                        format_func=lambda x: model_a_options[x],
+                        key="ab_model_a"
+                    )
+                    
+                    # Model B
+                    model_b_idx = st.selectbox(
+                        "Model B",
+                        range(len(model_a_options)),
+                        format_func=lambda x: model_a_options[x],
+                        index=1 if len(model_a_options) > 1 else 0,
+                        key="ab_model_b"
+                    )
+                    
+                    # Traffic split
+                    st.markdown("### Traffic Split")
+                    traffic_a = st.slider(
+                        "Model A Traffic %",
+                        0, 100, 50,
+                        help="Percentage of predictions for Model A"
+                    )
+                    traffic_b = 100 - traffic_a
+                    
+                    st.info(f"Split: {traffic_a}% Model A, {traffic_b}% Model B")
+            
+            st.divider()
+            
+            if st.button("🚀 Create A/B Test", type="primary", use_container_width=True):
+                if model_a_idx == model_b_idx:
+                    st.error("❌ Please select different models for A and B")
+                else:
+                    try:
+                        framework = ABTestingFramework()
+                        
+                        model_a = symbol_models[model_a_idx]
+                        model_b = symbol_models[model_b_idx]
+                        
+                        test_id = framework.create_test(
+                            test_name=test_name,
+                            symbol=test_symbol,
+                            models=[
+                                {
+                                    'model_id': model_a['model_id'],
+                                    'model_type': model_a['model_type'],
+                                    'version': 'v1'
+                                },
+                                {
+                                    'model_id': model_b['model_id'],
+                                    'model_type': model_b['model_type'],
+                                    'version': 'v1'
+                                }
+                            ],
+                            duration_days=test_duration,
+                            traffic_split=[traffic_a / 100, traffic_b / 100]
+                        )
+                        
+                        st.success(f"✅ A/B test created: `{test_id}`")
+                        st.info("""
+                        **Next steps:**
+                        1. Test will automatically collect predictions
+                        2. Check 'Active Tests' tab to monitor progress
+                        3. Analyze results when sufficient data is collected
+                        """)
+                    
+                    except Exception as e:
+                        st.error(f"❌ Failed to create test: {str(e)}")
+        
+        # ACTIVE TESTS
+        with ab_tab2:
+            st.markdown("### 📊 Active A/B Tests")
+            
+            try:
+                framework = ABTestingFramework()
+                active_tests = framework.get_active_tests()
+                
+                if not active_tests:
+                    st.info("No active A/B tests. Create one in the 'Create Test' tab.")
+                else:
+                    for test in active_tests:
+                        with st.expander(f"🧪 {test['test_name']} ({test['symbol']})"):
+                            col1, col2, col3 = st.columns(3)
+                            
+                            with col1:
+                                st.markdown(f"**Test ID:** `{test['test_id']}`")
+                                st.markdown(f"**Symbol:** {test['symbol']}")
+                            
+                            with col2:
+                                st.markdown(f"**Created:** {test['created_at'][:10]}")
+                                st.markdown(f"**Ends:** {test['end_date'][:10]}")
+                            
+                            with col3:
+                                if st.button(f"📈 Analyze", key=f"analyze_{test['test_id']}"):
+                                    st.session_state['analyze_test_id'] = test['test_id']
+                                    st.info("Go to 'Analyze Results' tab")
+                                
+                                if st.button(f"🛑 Stop", key=f"stop_{test['test_id']}"):
+                                    framework.stop_test(test['test_id'])
+                                    st.success("Test stopped")
+                                    st.rerun()
+            
+            except Exception as e:
+                st.error(f"❌ Error loading tests: {str(e)}")
+        
+        # ANALYZE RESULTS
+        with ab_tab3:
+            st.markdown("### 📈 Analyze A/B Test Results")
+            
+            try:
+                framework = ABTestingFramework()
+                active_tests = framework.get_active_tests()
+                
+                if not active_tests:
+                    st.info("No active tests to analyze.")
+                else:
+                    # Test selection
+                    test_names = [f"{t['test_name']} ({t['symbol']})" for t in active_tests]
+                    
+                    # Use session state if set
+                    default_idx = 0
+                    if 'analyze_test_id' in st.session_state:
+                        for i, t in enumerate(active_tests):
+                            if t['test_id'] == st.session_state['analyze_test_id']:
+                                default_idx = i
+                                break
+                    
+                    selected_test_idx = st.selectbox(
+                        "Select Test",
+                        range(len(test_names)),
+                        format_func=lambda x: test_names[x],
+                        index=default_idx
+                    )
+                    
+                    selected_test = active_tests[selected_test_idx]
+                    test_id = selected_test['test_id']
+                    
+                    if st.button("📊 Analyze Test", type="primary"):
+                        with st.spinner("Analyzing test results..."):
+                            analysis = framework.analyze_test(test_id)
+                            
+                            st.markdown(f"### Results: {analysis['test_name']}")
+                            st.markdown(f"**Symbol:** {analysis['symbol']}")
+                            
+                            # Model comparison table
+                            st.markdown("### 📊 Model Performance")
+                            
+                            comparison_data = []
+                            for variant, data in analysis['models'].items():
+                                metrics = data['metrics']
+                                comparison_data.append({
+                                    'Model': f"{variant}: {data['model_id'][:20]}...",
+                                    'Predictions': metrics['n_predictions'],
+                                    'With Actuals': metrics['n_with_actuals'],
+                                    'MAE': f"${metrics['mae']:.2f}" if metrics['mae'] else 'N/A',
+                                    'RMSE': f"${metrics['rmse']:.2f}" if metrics['rmse'] else 'N/A',
+                                    'MAPE': f"{metrics['mape']:.2f}%" if metrics['mape'] else 'N/A',
+                                    'Sufficient Data': '✅' if data['sufficient_data'] else '❌'
+                                })
+                            
+                            st.dataframe(pd.DataFrame(comparison_data), use_container_width=True)
+                            
+                            # Statistical comparison
+                            if analysis.get('statistical_comparison'):
+                                st.divider()
+                                st.markdown("### 🔬 Statistical Analysis")
+                                
+                                comp = analysis['statistical_comparison']
+                                
+                                col1, col2, col3, col4 = st.columns(4)
+                                
+                                with col1:
+                                    st.metric("P-Value", f"{comp['p_value']:.4f}")
+                                
+                                with col2:
+                                    st.metric(
+                                        "Significant?",
+                                        "Yes ✅" if comp['significant'] else "No ❌"
+                                    )
+                                
+                                with col3:
+                                    st.metric("Winner", f"Model {comp['winner']}")
+                                
+                                with col4:
+                                    st.metric("Improvement", f"{comp['improvement_pct']:.1f}%")
+                                
+                                # Recommendation
+                                st.divider()
+                                if comp['winner'] != 'tie':
+                                    st.success(f"### 🏆 {analysis['recommendation']}")
+                                    st.markdown(f"""
+                                    Model {comp['winner']} is statistically significantly better:
+                                    - **{comp['improvement_pct']:.1f}% improvement** in MAE
+                                    - **P-value: {comp['p_value']:.4f}** (< 0.05 = significant)
+                                    - **Confidence: {comp['confidence_level']*100:.0f}%**
+                                    
+                                    ✅ Safe to deploy Model {comp['winner']}
+                                    """)
+                                else:
+                                    st.info(f"### {analysis['recommendation']}")
+                                    st.markdown("""
+                                    No statistically significant difference found.
+                                    - Continue testing or collect more data
+                                    - Consider other factors (speed, complexity)
+                                    """)
+                            else:
+                                st.warning("⚠️ " + analysis['recommendation'])
+            
+            except Exception as e:
+                st.error(f"❌ Analysis failed: {str(e)}")
+
