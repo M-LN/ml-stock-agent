@@ -8,6 +8,10 @@ from agent_interactive import (
     train_and_save_xgboost,
     train_and_save_lstm,
     train_and_save_prophet,
+    train_and_save_rf_v2,
+    train_and_save_xgboost_v2,
+    train_and_save_lstm_v2,
+    get_available_model_versions,
     list_saved_models,
     load_model,
     delete_model,
@@ -113,6 +117,37 @@ with tab1:
         st.markdown("### 🤖 Model Type")
         model_type = st.radio("Vælg model", ["Random Forest", "XGBoost", "LSTM", "Prophet"], key="model_type")
         
+        # Model version selection for v2 models
+        st.markdown("### 📦 Model Version")
+        if model_type in ["Random Forest", "XGBoost", "LSTM"]:
+            model_versions = get_available_model_versions()
+            model_key = model_type.lower().replace(" ", "")
+            
+            version_options = []
+            for version, info in model_versions.get(model_key, {}).items():
+                label = f"{info['name']}"
+                if info.get('recommended'):
+                    label += " ⭐"
+                version_options.append((version, label, info))
+            
+            selected_version = st.selectbox(
+                "Version",
+                options=version_options,
+                format_func=lambda x: x[1],
+                index=1,  # Default to v2 (Enhanced) ⭐
+                help="v2 models use 67 technical indicators for better accuracy",
+                key="model_version"
+            )
+            
+            version_code = selected_version[0]
+            version_info = selected_version[2]
+            
+            # Show version description
+            st.info(f"ℹ️ {version_info['description']}")
+        else:
+            version_code = "v1"
+            version_info = None
+        
         # Common parameters
         st.markdown("### ⚙️ Parametre")
         if model_type != "Prophet":  # Prophet doesn't use window
@@ -212,7 +247,8 @@ with tab1:
                 'params': current_params,
                 'model_type': model_type,
                 'symbol': train_symbol,
-                'period': train_period
+                'period': train_period,
+                'version_code': version_code
             }
             st.session_state.training_state = 'validated'
             st.rerun()
@@ -269,31 +305,64 @@ with tab1:
             # Train model
             with st.spinner(f"🏋️ Træner {model_type} model... (Est. {int(val_data['report']['estimated_time'])}s)"):
                 try:
+                    # Get version code from session state
+                    version = val_data.get('version_code', 'v1')
+                    
                     if model_type == "Random Forest":
-                        result = train_and_save_rf(
-                            data, train_symbol,
-                            n_estimators=n_estimators,
-                            max_depth=max_depth,
-                            window=window,
-                            horizon=horizon
-                        )
+                        if version == 'v2':
+                            result = train_and_save_rf_v2(
+                                data, train_symbol,
+                                n_estimators=n_estimators,
+                                max_depth=max_depth,
+                                window=window,
+                                horizon=horizon,
+                                use_features=True
+                            )
+                        else:
+                            result = train_and_save_rf(
+                                data, train_symbol,
+                                n_estimators=n_estimators,
+                                max_depth=max_depth,
+                                window=window,
+                                horizon=horizon
+                            )
                     elif model_type == "XGBoost":
-                        result = train_and_save_xgboost(
-                            data, train_symbol,
-                            n_estimators=n_estimators,
-                            max_depth=max_depth,
-                            learning_rate=learning_rate,
-                            window=window,
-                            horizon=horizon
-                        )
+                        if version == 'v2':
+                            result = train_and_save_xgboost_v2(
+                                data, train_symbol,
+                                n_estimators=n_estimators,
+                                max_depth=max_depth,
+                                learning_rate=learning_rate,
+                                window=window,
+                                horizon=horizon,
+                                use_features=True
+                            )
+                        else:
+                            result = train_and_save_xgboost(
+                                data, train_symbol,
+                                n_estimators=n_estimators,
+                                max_depth=max_depth,
+                                learning_rate=learning_rate,
+                                window=window,
+                                horizon=horizon
+                            )
                     elif model_type == "LSTM":
-                        from agent_interactive import train_and_save_lstm
-                        result = train_and_save_lstm(
-                            data, train_symbol,
-                            window=window,
-                            epochs=epochs,
-                            horizon=horizon
-                        )
+                        if version == 'v2':
+                            result = train_and_save_lstm_v2(
+                                data, train_symbol,
+                                sequence_length=window,
+                                lstm_units=[32, 16],
+                                epochs=epochs,
+                                use_attention=True,
+                                n_features=20
+                            )
+                        else:
+                            result = train_and_save_lstm(
+                                data, train_symbol,
+                                window=window,
+                                epochs=epochs,
+                                horizon=horizon
+                            )
                     elif model_type == "Prophet":
                         from agent_interactive import train_and_save_prophet
                         result = train_and_save_prophet(
@@ -682,10 +751,24 @@ with tab2:
                     
                     if 'metadata' in model_info:
                         meta = model_info['metadata']
+                        
+                        # Show model version if available
+                        model_version = meta.get('model_version', 'v1_legacy')
+                        if 'v2' in model_version:
+                            st.markdown(f"**Version:** 🆕 v2 (Enhanced with 67 features)")
+                        else:
+                            st.markdown(f"**Version:** v1 (Legacy)")
+                        
                         st.markdown(f"**Window:** {meta.get('window', 'N/A')}")
                         st.markdown(f"**Horizon:** {meta.get('horizon', 'N/A')}")
                         st.markdown(f"**Training MAE:** ${meta.get('train_mae', 'N/A'):.2f}")
                         st.markdown(f"**Training RMSE:** ${meta.get('train_rmse', 'N/A'):.2f}")
+                        
+                        # Show MAPE and Directional Accuracy if available (v2 models)
+                        if 'test_mape' in meta:
+                            st.markdown(f"**Test MAPE:** {meta['test_mape']:.2f}%")
+                        if 'test_direction_acc' in meta:
+                            st.markdown(f"**Directional Accuracy:** {meta['test_direction_acc']:.1f}%")
                         
                         with st.expander("📋 Fuld Metadata"):
                             st.json(meta)

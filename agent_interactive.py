@@ -3328,6 +3328,93 @@ def interactive_mode():
         
         input(f"\n{Fore.CYAN}Tryk Enter for at fortsætte...{Style.RESET_ALL}")
 
+# ========== V2 MODEL WRAPPERS ==========
+
+def train_and_save_rf_v2(data, symbol, n_estimators=200, max_depth=15, window=30, horizon=1, use_features=True):
+    """
+    Wrapper for RF v2 with enhanced features.
+    Imports and calls ml_training_enhanced.py
+    """
+    from ml_training_enhanced import train_and_save_rf_v2 as train_rf_v2_impl
+    return train_rf_v2_impl(data, symbol, n_estimators, max_depth, window, horizon, use_features)
+
+
+def train_and_save_xgboost_v2(data, symbol, n_estimators=300, max_depth=8, learning_rate=0.05, 
+                               window=30, horizon=1, use_features=True):
+    """
+    Wrapper for XGBoost v2 with enhanced features.
+    Imports and calls ml_training_enhanced.py
+    """
+    from ml_training_enhanced import train_and_save_xgboost_v2 as train_xgb_v2_impl
+    return train_xgb_v2_impl(data, symbol, n_estimators, max_depth, learning_rate, 
+                             window, horizon, use_features)
+
+
+def train_and_save_lstm_v2(data, symbol, sequence_length=30, lstm_units=[32, 16], 
+                            epochs=100, use_attention=True, n_features=20):
+    """
+    Wrapper for LSTM v2 Tuned with Attention.
+    Imports and calls lstm_tuned.py
+    """
+    from lstm_tuned import train_and_save_lstm_tuned
+    return train_and_save_lstm_tuned(data, symbol, sequence_length, lstm_units, 
+                                    epochs, 32, use_attention, n_features)
+
+
+def get_available_model_versions():
+    """
+    Returns list of available model versions for UI selection.
+    """
+    return {
+        'rf': {
+            'v1': {
+                'name': 'Random Forest v1 (Legacy)',
+                'description': 'Original RF with basic price features',
+                'function': train_and_save_rf
+            },
+            'v2': {
+                'name': 'Random Forest v2 (Enhanced)',
+                'description': 'RF with 67 technical indicators',
+                'function': train_and_save_rf_v2,
+                'recommended': True
+            }
+        },
+        'xgboost': {
+            'v1': {
+                'name': 'XGBoost v1 (Legacy)',
+                'description': 'Original XGBoost with basic features',
+                'function': train_and_save_xgboost
+            },
+            'v2': {
+                'name': 'XGBoost v2 (Enhanced)',
+                'description': 'XGBoost with 67 indicators + early stopping',
+                'function': train_and_save_xgboost_v2,
+                'recommended': True
+            }
+        },
+        'lstm': {
+            'v1': {
+                'name': 'LSTM v1 (Simple)',
+                'description': 'Basic 2-layer LSTM',
+                'function': train_and_save_lstm
+            },
+            'v2': {
+                'name': 'LSTM v2 (Bi-directional + Attention)',
+                'description': 'Advanced Bi-LSTM with Attention mechanism',
+                'function': train_and_save_lstm_v2,
+                'recommended': True
+            }
+        },
+        'prophet': {
+            'v1': {
+                'name': 'Prophet (Time Series)',
+                'description': 'Facebook Prophet for trend forecasting',
+                'function': train_and_save_prophet
+            }
+        }
+    }
+
+
 # ---------- Main Entry Point ----------
 
 def main():

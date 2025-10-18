@@ -192,16 +192,20 @@ def calculate_adx(high: pd.Series, low: pd.Series, close: pd.Series, period: int
 
 def create_features(data: pd.DataFrame, include_volume: bool = True) -> pd.DataFrame:
     """
-    Skaber et komplet sæt af features til ML modeller.
+    Opretter tekniske indikatorer og features til ML modeller.
     
     Args:
         data: DataFrame med OHLCV data
-        include_volume: Om volume-baserede features skal inkluderes
+        include_volume: Om volume-features skal inkluderes
     
     Returns:
         DataFrame med alle features
     """
     df = data.copy()
+    
+    # Flatten multi-level columns if present (from yfinance)
+    if isinstance(df.columns, pd.MultiIndex):
+        df.columns = df.columns.get_level_values(0)
     
     # Ensure we have required columns
     required_cols = ['Open', 'High', 'Low', 'Close']

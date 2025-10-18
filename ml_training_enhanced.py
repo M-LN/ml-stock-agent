@@ -113,7 +113,12 @@ def train_and_save_rf_v2(data, symbol, n_estimators=100, max_depth=10,
             data, window, horizon, use_features
         )
         
-        print(f"   Training samples: {len(X_train)}, Features: {X_train.shape[1]}")
+        # Check if we have valid data
+        if len(X_train) == 0 or (hasattr(X_train, 'shape') and len(X_train.shape) < 2):
+            print(f"   ❌ Insufficient data after preparation. Need more historical data.")
+            return None
+        
+        print(f"   Training samples: {len(X_train)}, Features: {X_train.shape[1] if len(X_train.shape) > 1 else 0}")
         
         # Train model
         rf_model = RandomForestRegressor(
@@ -245,7 +250,12 @@ def train_and_save_xgboost_v2(data, symbol, n_estimators=100, max_depth=6,
             data, window, horizon, use_features
         )
         
-        print(f"   Training samples: {len(X_train)}, Features: {X_train.shape[1]}")
+        # Check if we have valid data
+        if len(X_train) == 0 or (hasattr(X_train, 'shape') and len(X_train.shape) < 2):
+            print(f"   ❌ Insufficient data after preparation. Need more historical data.")
+            return None
+        
+        print(f"   Training samples: {len(X_train)}, Features: {X_train.shape[1] if len(X_train.shape) > 1 else 0}")
         
         # Train model with early stopping
         xgb_model = xgb.XGBRegressor(
