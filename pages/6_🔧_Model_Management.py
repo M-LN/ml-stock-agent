@@ -294,7 +294,9 @@ with tab1:
         if st.session_state.training_state == 'validated' and st.session_state.validation_data:
             val_data = st.session_state.validation_data
             
+            st.success("✅ Data analyzed and validated!")
             st.markdown("---")
+            st.markdown("### 📋 Validation Report")
             display_validation_report(val_data['report'], val_data['params'], val_data['model_type'])
             
             # Check if there are critical issues
@@ -496,15 +498,24 @@ with tab1:
         # Check if parameters changed - reset workflow if in validated/training state (but NOT completed)
         if st.session_state.training_state in ['validated', 'training'] and st.session_state.validation_data:
             val_data = st.session_state.validation_data
+            
+            # Debug: Show current state
+            with st.expander("🔍 Debug: Current State", expanded=False):
+                st.write(f"Training State: {st.session_state.training_state}")
+                st.write(f"Stored params: Symbol={val_data.get('symbol')}, Model={val_data.get('model_type')}, Period={val_data.get('period')}, Version={val_data.get('version_code')}")
+                st.write(f"Current params: Symbol={train_symbol}, Model={model_type}, Period={train_period}, Version={version_code}")
+            
             params_changed = (
-                val_data['symbol'] != train_symbol or
-                val_data['model_type'] != model_type or
-                val_data['period'] != train_period
+                val_data.get('symbol') != train_symbol or
+                val_data.get('model_type') != model_type or
+                val_data.get('period') != train_period or
+                val_data.get('version_code') != version_code
             )
             if params_changed:
                 st.warning("⚠️ Parameters changed. Please re-analyze data.")
                 st.session_state.training_state = 'idle'
                 st.session_state.validation_data = None
+                # Don't continue showing old validation report
         
         # Show instructions only when idle
         if st.session_state.training_state == 'idle':
