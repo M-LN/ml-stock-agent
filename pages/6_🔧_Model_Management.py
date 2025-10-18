@@ -142,7 +142,14 @@ with tab1:
         st.markdown("### 📦 Model Version")
         if model_type in ["Random Forest", "XGBoost", "LSTM"]:
             model_versions = get_available_model_versions()
-            model_key = model_type.lower().replace(" ", "")
+            
+            # Map UI model names to version keys
+            model_key_mapping = {
+                "Random Forest": "rf",
+                "XGBoost": "xgboost",
+                "LSTM": "lstm"
+            }
+            model_key = model_key_mapping.get(model_type, model_type.lower().replace(" ", ""))
             
             version_options = []
             for version, info in model_versions.get(model_key, {}).items():
@@ -151,20 +158,28 @@ with tab1:
                     label += " ⭐"
                 version_options.append((version, label, info))
             
-            selected_version = st.selectbox(
-                "Version",
-                options=version_options,
-                format_func=lambda x: x[1],
-                index=1,  # Default to v2 (Enhanced) ⭐
-                help="v2 models use 67 technical indicators for better accuracy",
-                key="model_version"
-            )
+            # Only show selectbox if we have version options
+            if version_options:
+                selected_version = st.selectbox(
+                    "Version",
+                    options=version_options,
+                    format_func=lambda x: x[1],
+                    index=min(1, len(version_options) - 1),  # Default to v2 if available
+                    help="v2 models use 67 technical indicators for better accuracy",
+                    key="model_version"
+                )
+                
+                version_code = selected_version[0]
+                version_info = selected_version[2]
+            else:
+                # Fallback if no versions found
+                version_code = "v1"
+                version_info = None
+                st.warning("⚠️ No versions found for this model type")
             
-            version_code = selected_version[0]
-            version_info = selected_version[2]
-            
-            # Show version description
-            st.info(f"ℹ️ {version_info['description']}")
+            # Show version description if available
+            if version_info:
+                st.info(f"ℹ️ {version_info['description']}")
         else:
             version_code = "v1"
             version_info = None
