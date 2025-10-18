@@ -10,6 +10,8 @@ from agent_interactive import (
     list_saved_models, load_model, predict_with_saved_model
 )
 from prediction_tracker import save_prediction
+from regime_prediction import RegimePredictionSystem
+from market_regime_detector import get_current_regime
 
 st.set_page_config(page_title="ML Forecast", page_icon="🤖", layout="wide")
 
@@ -84,11 +86,60 @@ horizon_map = {
     "22 dage (1 måned)": 22
 }
 
+st.sidebar.markdown("---")
+
+# 🆕 Regime Detection Section
+st.sidebar.markdown("### 🔍 Market Regime Detection")
+use_regime_aware = st.sidebar.checkbox(
+    "🎯 Auto-select regime-specific model", 
+    value=False,
+    help="Automatically select best model based on current market regime"
+)
+
+if use_regime_aware:
+    with st.sidebar:
+        try:
+            regime_result = get_current_regime(symbol, period='6mo')
+            regime = regime_result['regime']
+            confidence = regime_result['confidence']
+            
+            # Regime badge
+            regime_colors = {
+                'bull': '🟢',
+                'bear': '🔴',
+                'sideways': '🟡',
+                'high_volatility': '🟠'
+            }
+            
+            badge = regime_colors.get(regime, '⚪')
+            st.info(f"{badge} **{regime.upper()}** ({confidence:.0%} confidence)")
+            
+            # Check if regime models exist
+            system = RegimePredictionSystem()
+            coverage = system.get_regime_model_coverage(symbol, 'rf')
+            
+            if coverage['has_regime_models']:
+                if coverage['coverage'].get(regime, False):
+                    st.success(f"✅ Regime-specific model available")
+                else:
+                    st.warning(f"⚠️ No model for {regime} regime. Will use standard model.")
+            else:
+                st.warning("⚠️ No regime models found. Train them in Market Regime page.")
+        except Exception as e:
+            st.error(f"Regime detection failed: {str(e)}")
+            use_regime_aware = False
+
+st.sidebar.markdown("---")
+
 st.sidebar.markdown("### 🔧 Brug Gemt Model?")
 use_saved_model = st.sidebar.checkbox("📂 Brug gemt model i stedet", value=False,
-                                     help="Brug en tidligere trænet model")
+                                     help="Brug en tidligere trænet model",
+                                     disabled=use_regime_aware)  # Disable when regime-aware is active
 
-if use_saved_model:
+if use_regime_aware:
+    st.sidebar.info("💡 Regime-aware mode active. Model selection handled automatically.")
+
+if use_saved_model and not use_regime_aware:
     # Get ONLY deployed models
     all_saved_models = list_saved_models(symbol=symbol)
     saved_models = [m for m in all_saved_models if m.get('deployed', False)]

@@ -1,0 +1,9 @@
+{
+  "symbol": "AAPL",
+  "model_type": "rf",
+  "created": "2025-10-18T16:29:42.842671",
+  "regime_models": {
+    "bull": "rf_v2_AAPL_bull_20251018_162941",
+    "sideways": "rf_v2_AAPL_sideways_20251018_162942"
+  }
+}
