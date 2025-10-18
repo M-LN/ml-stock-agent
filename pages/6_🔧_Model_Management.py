@@ -431,17 +431,25 @@ with tab1:
                     # Store result and move to completed state
                     st.session_state.validation_data['result'] = result
                     st.session_state.training_state = 'completed'
+                    st.success("✅ Training completed! Showing results...")
                     st.rerun()
                         
                 except Exception as e:
                     st.error(f"❌ Training fejl: {str(e)}")
+                    import traceback
+                    st.code(traceback.format_exc())
                     st.session_state.training_state = 'idle'
                     st.session_state.validation_data = None
         
         # Completed state - show results
         if st.session_state.training_state == 'completed' and st.session_state.validation_data:
+            st.info("🎯 DEBUG: In completed state, showing results...")
             val_data = st.session_state.validation_data
             result = val_data.get('result')
+            
+            st.write(f"DEBUG: result type = {type(result)}, is dict = {isinstance(result, dict)}")
+            if result:
+                st.write(f"DEBUG: result keys = {result.keys() if isinstance(result, dict) else 'N/A'}")
             
             if result and isinstance(result, dict):
                 st.success("🎉 Model trænet og gemt!")
@@ -511,6 +519,14 @@ with tab1:
                         st.session_state.validation_data = None
                         # User can manually switch to other tabs
                         st.info("👉 Switch to 'Gem Modeller' tab to see all models")
+            else:
+                st.error("⚠️ Training completed but result is not in expected format")
+                st.write(f"Result type: {type(result)}")
+                st.write(f"Result: {result}")
+                if st.button("🔄 Reset"):
+                    st.session_state.training_state = 'idle'
+                    st.session_state.validation_data = None
+                    st.rerun()
         
         # Show instructions only when idle
         if st.session_state.training_state == 'idle':
