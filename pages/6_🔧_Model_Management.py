@@ -461,7 +461,9 @@ with tab1:
                     try:
                         from agent_interactive import load_model
                         model_path = f"models/{model_id}.pkl"
-                        model_package = load_model(model_path)
+                        
+                        with st.spinner("Loading model metadata..."):
+                            model_package = load_model(model_path)
                         
                         if model_package and 'metadata' in model_package:
                             metadata = model_package['metadata']
@@ -504,8 +506,15 @@ with tab1:
                             # Show detailed metadata
                             with st.expander("📋 Full Model Metadata"):
                                 st.json(metadata)
+                        else:
+                            st.info("ℹ️ Model loaded but metadata not available in expected format")
+                            if model_package:
+                                st.write("Available keys:", list(model_package.keys()) if isinstance(model_package, dict) else "Not a dict")
                     except Exception as e:
                         st.warning(f"⚠️ Could not load model metadata: {str(e)}")
+                        import traceback
+                        with st.expander("Error details"):
+                            st.code(traceback.format_exc())
                 
                 # If result is a dict (from v1 models)
                 elif isinstance(result, dict):
