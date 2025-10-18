@@ -8,21 +8,29 @@ import pandas as pd
 from typing import Dict, Optional, Tuple
 
 
-def get_peg_ratio(ticker: yf.Ticker, info: dict) -> Tuple[Optional[float], str]:
+def get_peg_ratio(ticker: yf.Ticker, info: dict, pe_ratio: Optional[float] = None, growth_rate: Optional[float] = None) -> Tuple[Optional[float], str]:
     """
     Henter PEG ratio med fallback-kæde for bedst mulig datakvalitet.
     
     Fallback-kæde:
-    1. Yahoo Finance pegRatio (forward PEG)
+    1. Yahoo Finance pegRatio/trailingPegRatio (forward PEG)
     2. Beregn fra forward P/E og forventet vækst
-    3. Beregn fra trailing P/E og historisk vækst (med disclaimer)
-    4. Return None hvis ingen data
+    3. Beregn fra trailing P/E og historisk vækst
+    4. Beregn fra provided pe_ratio og growth_rate (hvis tilgængelig)
+    5. Beregn vækst fra historiske earnings
+    6. Return None hvis ingen data
+    
+    Args:
+        ticker: yfinance Ticker object
+        info: ticker.info dict
+        pe_ratio: Optional P/E ratio hvis allerede hentet
+        growth_rate: Optional growth rate i % hvis allerede beregnet
     
     Returns:
         Tuple[peg_value, data_source]
     """
     # 1. Forsøg direkte pegRatio fra Yahoo
-    peg = info.get("pegRatio")
+    peg = info.get("pegRatio") or info.get("trailingPegRatio")
     if peg and peg > 0:
         return peg, "Yahoo Finance"
     
@@ -35,7 +43,7 @@ def get_peg_ratio(ticker: yf.Ticker, info: dict) -> Tuple[Optional[float], str]:
         return peg_calculated, "Beregnet (Forward)"
     
     # 3. Beregn fra trailing P/E og historisk vækst
-    trailing_pe = info.get("trailingPE")
+    trailing_pe = info.get("trailingPE") or pe_ratio
     earnings_quarterly_growth = info.get("earningsQuarterlyGrowth")
     
     if trailing_pe and earnings_quarterly_growth and earnings_quarterly_growth > 0:
@@ -44,7 +52,12 @@ def get_peg_ratio(ticker: yf.Ticker, info: dict) -> Tuple[Optional[float], str]:
         peg_calculated = trailing_pe / annual_growth
         return peg_calculated, "Beregnet (Historisk)"
     
-    # 4. Forsøg at beregne vækst fra historiske earnings
+    # 4. Brug provided P/E og growth hvis tilgængelig
+    if pe_ratio and growth_rate and growth_rate > 0:
+        peg_calculated = pe_ratio / growth_rate
+        return peg_calculated, "Beregnet (P/E × Vækst)"
+    
+    # 5. Forsøg at beregne vækst fra historiske earnings
     try:
         earnings = ticker.earnings
         if earnings is not None and not earnings.empty and len(earnings) >= 2:
@@ -55,8 +68,8 @@ def get_peg_ratio(ticker: yf.Ticker, info: dict) -> Tuple[Optional[float], str]:
             
             if first_earnings > 0 and last_earnings > 0 and years > 0:
                 cagr = (pow(last_earnings / first_earnings, 1/years) - 1) * 100
-                if cagr > 0 and trailing_pe:
-                    peg_calculated = trailing_pe / cagr
+                if cagr > 0 and (trailing_pe or pe_ratio):
+                    peg_calculated = (trailing_pe or pe_ratio) / cagr
                     return peg_calculated, "Beregnet (CAGR)"
     except Exception:
         pass
@@ -108,13 +121,13 @@ def analyze_fundamentals(symbol: str, industry_pe: float = 20.0) -> Dict:
         pe = info.get("trailingPE")
         pb = info.get("priceToBook")
         
-        # Forbedret PEG ratio acquisition
-        peg, peg_source = get_peg_ratio(ticker, info)
-        
-        # Forbedret growth estimate
+        # Forbedret growth estimate først
         growth = get_forward_growth(ticker, info)
         if growth is None:
             growth = info.get("earningsQuarterlyGrowth", 0) * 100 if info.get("earningsQuarterlyGrowth") else 0
+        
+        # Forbedret PEG ratio acquisition (med P/E og growth som fallback)
+        peg, peg_source = get_peg_ratio(ticker, info, pe_ratio=pe, growth_rate=growth)
         
         # Beregn fair value score
         score = calculate_fair_value_score(pe, industry_pe, peg, pb, growth)
