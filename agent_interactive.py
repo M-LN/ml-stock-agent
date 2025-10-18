@@ -986,8 +986,8 @@ def list_saved_models(model_type=None, symbol=None):
             except:
                 continue
     
-    # Sort by timestamp (newest first)
-    models.sort(key=lambda x: x['timestamp'], reverse=True)
+    # Sort by timestamp (newest first), use empty string as default if timestamp missing
+    models.sort(key=lambda x: x.get('timestamp', ''), reverse=True)
     return models
 
 def delete_model(filepath):
