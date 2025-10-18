@@ -2,6 +2,7 @@ import streamlit as st
 import yfinance as yf
 import pandas as pd
 import plotly.graph_objects as go
+import plotly.express as px
 from agent_interactive import (
     generate_trading_signal,
     ml_forecast_rf,
@@ -13,6 +14,10 @@ from agent_interactive import (
     load_model,
     predict_with_saved_model
 )
+from fundamentals import analyze_fundamentals, get_valuation_category
+from sentiment import get_combined_sentiment, get_fear_greed_interpretation
+from mentor import mentor_comment_simple
+import os
 
 st.set_page_config(page_title="Agent Recommendations", page_icon="🎯", layout="wide")
 
@@ -287,6 +292,149 @@ if 'agent_data' in st.session_state and 'agent_symbol' in st.session_state:
     
     st.divider()
     
+    # ========== FUNDAMENTALS + SENTIMENT ANALYSIS ==========
+    st.subheader("📊 Fundamentals + Sentiment Analysis")
+    st.markdown("**Værdiansættelse og markedspsykologi**")
+    
+    # Get API key from sidebar or environment
+    finnhub_api_key = os.getenv("FINNHUB_API_KEY")
+    
+    with st.spinner("Analyserer fundamentals + sentiment..."):
+        try:
+            # Get fundamentals
+            fundamentals = analyze_fundamentals(symbol, industry_pe=20.0)
+            
+            # Get sentiment
+            sentiment = get_combined_sentiment(symbol, finnhub_api_key)
+            
+            # Generate mentor comment
+            mentor_comment = mentor_comment_simple(fundamentals, sentiment)
+            
+            # Display metrics
+            fund_col1, fund_col2, fund_col3, fund_col4 = st.columns(4)
+            
+            with fund_col1:
+                st.metric(
+                    "📊 Fundamental Score",
+                    f"{fundamentals['score']}/100",
+                    delta=get_valuation_category(fundamentals['score'])
+                )
+            
+            with fund_col2:
+                st.metric(
+                    "🎭 Sentiment Score",
+                    f"{sentiment['combined_score']}/100",
+                    delta=sentiment['interpretation']
+                )
+            
+            with fund_col3:
+                fg = sentiment.get('fear_greed', {})
+                st.metric(
+                    "😱 Fear & Greed",
+                    f"{fg.get('value', 50)}/100",
+                    delta=fg.get('classification', 'Neutral')
+                )
+            
+            with fund_col4:
+                vix = sentiment.get('vix', {})
+                vix_val = vix.get('value')
+                if vix_val:
+                    st.metric(
+                        "📉 VIX",
+                        f"{vix_val:.1f}",
+                        delta=vix.get('interpretation', 'N/A')
+                    )
+                else:
+                    st.metric("📉 VIX", "N/A")
+            
+            # Expandable details
+            with st.expander("📈 Se Detaljer"):
+                detail_col1, detail_col2 = st.columns(2)
+                
+                with detail_col1:
+                    st.markdown("### 📊 Fundamentals")
+                    
+                    fund_data = {
+                        "Metric": ["P/E Ratio", "PEG Ratio", "P/B Ratio", "Growth %"],
+                        "Value": [
+                            f"{fundamentals.get('pe', 'N/A'):.2f}" if fundamentals.get('pe') else "N/A",
+                            f"{fundamentals.get('peg', 'N/A'):.2f}" if fundamentals.get('peg') else "N/A",
+                            f"{fundamentals.get('pb', 'N/A'):.2f}" if fundamentals.get('pb') else "N/A",
+                            f"{fundamentals.get('growth', 0):.2f}%"
+                        ]
+                    }
+                    
+                    st.dataframe(pd.DataFrame(fund_data), use_container_width=True, hide_index=True)
+                    
+                    # Gauge for fundamentals
+                    fig_fund = go.Figure(go.Indicator(
+                        mode="gauge+number",
+                        value=fundamentals['score'],
+                        title={'text': "Fundamental Score"},
+                        gauge={
+                            'axis': {'range': [0, 100]},
+                            'bar': {'color': "darkblue"},
+                            'steps': [
+                                {'range': [0, 45], 'color': "lightcoral"},
+                                {'range': [45, 60], 'color': "lightyellow"},
+                                {'range': [60, 75], 'color': "lightgreen"},
+                                {'range': [75, 100], 'color': "green"}
+                            ]
+                        }
+                    ))
+                    fig_fund.update_layout(height=250)
+                    st.plotly_chart(fig_fund, use_container_width=True)
+                
+                with detail_col2:
+                    st.markdown("### 🎭 Sentiment")
+                    
+                    news = sentiment.get('news_sentiment', {})
+                    
+                    sent_data = {
+                        "Source": ["Fear & Greed", "VIX", "News Sentiment"],
+                        "Value": [
+                            f"{fg.get('value', 'N/A')}/100",
+                            f"{vix.get('value', 'N/A'):.1f}" if vix.get('value') else "N/A",
+                            f"{news.get('score', 0):.2f}"
+                        ],
+                        "Status": [
+                            fg.get('classification', 'N/A'),
+                            vix.get('interpretation', 'N/A'),
+                            news.get('interpretation', 'N/A')
+                        ]
+                    }
+                    
+                    st.dataframe(pd.DataFrame(sent_data), use_container_width=True, hide_index=True)
+                    
+                    # Gauge for sentiment
+                    fig_sent = go.Figure(go.Indicator(
+                        mode="gauge+number",
+                        value=sentiment['combined_score'],
+                        title={'text': "Sentiment Score"},
+                        gauge={
+                            'axis': {'range': [0, 100]},
+                            'bar': {'color': "darkgreen"},
+                            'steps': [
+                                {'range': [0, 25], 'color': "red"},
+                                {'range': [25, 40], 'color': "orange"},
+                                {'range': [40, 60], 'color': "yellow"},
+                                {'range': [60, 75], 'color': "lightgreen"},
+                                {'range': [75, 100], 'color': "green"}
+                            ]
+                        }
+                    ))
+                    fig_sent.update_layout(height=250)
+                    st.plotly_chart(fig_sent, use_container_width=True)
+            
+            # Mentor comment
+            with st.expander("🧠 Mentor Refleksion", expanded=True):
+                st.markdown(mentor_comment)
+        
+        except Exception as e:
+            st.error(f"❌ Fejl ved fundamentals/sentiment analyse: {str(e)}")
+    
+    st.divider()
+    
     # Risk Management Section
     st.subheader("📊 Risk Management")
     
@@ -534,11 +682,17 @@ if 'agent_data' in st.session_state and 'agent_symbol' in st.session_state:
         st.markdown("""
         **Agent Intelligence System:**
         
+        **TRADING SIGNALS:**
         1. **ML Forecasts (40 points)**: Kombinerer forecasts fra flere modeller
         2. **RSI Indikator (20 points)**: Oversold/Overbought analyse
         3. **Moving Averages (20 points)**: Trend retning (SMA20, SMA50)
         4. **MACD (20 points)**: Momentum indikator
-        5. **Makro-Indikatorer (30 points)**: VIX, Fear & Greed, Shiller P/E ⭐ NEW!
+        5. **Makro-Indikatorer (30 points)**: VIX, Fear & Greed, Shiller P/E
+        
+        **FUNDAMENTALS + SENTIMENT:**
+        - **Fundamental Score (0-100)**: P/E, PEG, P/B, Growth
+        - **Sentiment Score (0-100)**: Fear & Greed + VIX + News
+        - **Mentor Refleksion**: Kombinerer rationel analyse med markedspsykologi
         
         **Makro-Indikatorer Breakdown:**
         - **VIX (10 points)**: Markedsvolatilitet - Lav VIX = bullish, Høj VIX = bearish
@@ -550,13 +704,26 @@ if 'agent_data' in st.session_state and 'agent_symbol' in st.session_state:
         - **SELL Signal**: Total score < -40%
         - **HOLD Signal**: Total score mellem -40% og 40%
         
+        **Fundamental Scoring:**
+        - **75-100**: Fundamentalt stærk - købs-kandidat
+        - **60-74**: Rimeligt prissat - kræver timing
+        - **45-59**: Lidt overvurderet - pas på
+        - **0-44**: Overprissat - undgå
+        
         **Risk Management:**
         - **Stop Loss**: 2x ATR under current price (begrænser tab)
         - **Target Price**: 3x ATR over current price (profit target)
         - **Risk/Reward**: Forholdet mellem potentiel profit og risiko
         
         **Confidence Score**: Baseret på hvor stærkt signalet er (50-100%)
+        
+        **Mentor Approach**: Kombinerer:
+        - Rationel værdiansættelse (fundamentals)
+        - Markedspsykologi (sentiment)
+        - Bias-detektion (FOMO, panik)
+        - Kontekstuel anbefaling
         """)
+
 
 else:
     # Welcome screen
@@ -567,11 +734,19 @@ else:
     
     Dette er en intelligent trading agent der:
     
+    **TRADING SIGNALS:**
     - 🤖 **Kombinerer ML forecasts** fra flere modeller (RF, XGBoost, Prophet, Ensemble, LSTM)
     - 📊 **Analyserer tekniske indikatorer** (RSI, Moving Averages, MACD)
+    - 🌍 **Inkluderer makro-indikatorer** (VIX, Fear & Greed, Shiller P/E)
     - 🎯 **Genererer klare signaler**: BUY, SELL eller HOLD
     - 🛡️ **Beregner risk management**: Stop loss, target price, risk/reward ratio
     - 🧠 **Forklarer reasoning**: Hvorfor dette signal?
+    
+    **FUNDAMENTALS + SENTIMENT:**
+    - 📊 **Fundamental Score**: P/E, PEG, P/B, Growth analyse
+    - 🎭 **Sentiment Score**: Fear & Greed + VIX + News sentiment
+    - 🧠 **Mentor Refleksion**: Kombinerer rationel analyse med markedspsykologi
+    - ⚠️ **Bias Detection**: Identificerer FOMO, panik og hype
     
     ### 🚀 Sådan bruger du det:
     
@@ -579,8 +754,9 @@ else:
     2. Vælg hvilke ML modeller der skal bruges
     3. Klik 'Analyser'
     4. Få klar BUY/SELL/HOLD anbefaling med confidence score
-    5. Se risk management levels (stop loss, target)
-    6. Læs reasoning - hvorfor agenten anbefaler dette
+    5. Se fundamentals + sentiment analyse
+    6. Læs mentor refleksion - værdiansat + markedspsykologi
+    7. Se risk management levels (stop loss, target)
     
     **Note**: Dette er et analyseværktøj - ikke finansiel rådgivning!
     """)
