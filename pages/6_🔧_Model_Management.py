@@ -483,10 +483,20 @@ with tab1:
                         with st.spinner("Loading model metadata..."):
                             model_package = load_model(model_path)
                         
-                        if model_package and 'metadata' in model_package:
-                            metadata = model_package['metadata']
+                        if model_package and isinstance(model_package, dict):
+                            # v2 models store metrics directly in model_package, not in a 'metadata' sub-dict
+                            # Check if this is the v2 format (metrics directly in model_package)
+                            if 'train_mae' in model_package:
+                                # v2 format - metrics are at root level
+                                metadata = model_package
+                            elif 'metadata' in model_package:
+                                # v1 format - metrics are in metadata sub-dict
+                                metadata = model_package['metadata']
+                            else:
+                                metadata = None
                             
-                            st.markdown("### 📊 Training Resultater")
+                            if metadata:
+                                st.markdown("### 📊 Training Resultater")
                             
                             # Main metrics
                             col1, col2, col3, col4 = st.columns(4)
@@ -523,20 +533,11 @@ with tab1:
                             
                             # Show detailed metadata
                             with st.expander("📋 Full Model Metadata"):
-                                st.json(metadata)
+                                # Filter out the model object itself for display
+                                display_metadata = {k: v for k, v in metadata.items() if k not in ['model', 'scaler_params']}
+                                st.json(display_metadata)
                         else:
-                            st.info("ℹ️ Model loaded but metadata not available in expected format")
-                            st.write("**Debug Info:**")
-                            st.write(f"- model_package type: {type(model_package)}")
-                            st.write(f"- model_package is dict: {isinstance(model_package, dict)}")
-                            if isinstance(model_package, dict):
-                                st.write(f"- Available keys: {list(model_package.keys())}")
-                                st.write(f"- Has 'metadata' key: {'metadata' in model_package}")
-                                if 'metadata' in model_package:
-                                    st.write(f"- Metadata type: {type(model_package['metadata'])}")
-                                    st.write(f"- Metadata value: {model_package['metadata']}")
-                            with st.expander("Full model_package content"):
-                                st.write(model_package)
+                            st.warning("⚠️ Could not load model metadata")
                     except Exception as e:
                         st.warning(f"⚠️ Could not load model metadata: {str(e)}")
                         import traceback
