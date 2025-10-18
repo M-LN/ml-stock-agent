@@ -455,12 +455,30 @@ with tab1:
                     model_id = result
                     st.markdown("### ✅ Model Training Complete")
                     st.success(f"💾 **Model saved successfully!**")
-                    st.code(f"models/{model_id}.pkl", language=None)
+                    
+                    # Determine the correct path
+                    # Try both saved_models/ and models/ directories
+                    possible_paths = [
+                        f"saved_models/{model_id}.pkl",
+                        f"models/{model_id}.pkl",
+                        f"{model_id}.pkl"  # In case it's already a full path
+                    ]
+                    
+                    model_path = None
+                    for path in possible_paths:
+                        if os.path.exists(path):
+                            model_path = path
+                            break
+                    
+                    if model_path:
+                        st.code(model_path, language=None)
+                    else:
+                        st.code(f"saved_models/{model_id}.pkl", language=None)
+                        st.warning(f"⚠️ Model file not found at expected locations")
                     
                     # Try to load the model to get metadata
                     try:
                         from agent_interactive import load_model
-                        model_path = f"models/{model_id}.pkl"
                         
                         with st.spinner("Loading model metadata..."):
                             model_package = load_model(model_path)
