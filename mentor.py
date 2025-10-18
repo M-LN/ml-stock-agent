@@ -28,6 +28,7 @@ def mentor_comment(
     score = fundamentals.get("score", 0)
     pe = fundamentals.get("pe")
     peg = fundamentals.get("peg")
+    peg_source = fundamentals.get("peg_source", "Unknown")
     pb = fundamentals.get("pb")
     growth = fundamentals.get("growth", 0)
     industry_pe = fundamentals.get("industry_pe", 20)
@@ -54,16 +55,20 @@ def mentor_comment(
     else:
         details.append("ℹ️ P/E data ikke tilgængelig")
     
-    # PEG ratio
+    # PEG ratio (med kilde-info)
     if peg is not None and peg > 0:
+        source_label = f" [{peg_source}]" if peg_source != "Yahoo Finance" else ""
         if peg <= 1.0:
-            details.append(f"✅ PEG på {peg:.2f} – god værdi ift. vækst")
+            details.append(f"✅ PEG på {peg:.2f}{source_label} – god værdi ift. vækst")
         elif peg <= 2.0:
-            details.append(f"⚠️ PEG på {peg:.2f} – fair, men ikke billig")
+            details.append(f"⚠️ PEG på {peg:.2f}{source_label} – fair, men ikke billig")
         else:
-            details.append(f"🔴 PEG på {peg:.2f} – overprissat ift. vækst")
+            details.append(f"🔴 PEG på {peg:.2f}{source_label} – overprissat ift. vækst")
     else:
-        details.append("ℹ️ PEG ikke tilgængelig (kræver vækst-estimat)")
+        if peg_source == "Ikke Tilgængelig":
+            details.append("ℹ️ PEG ikke tilgængelig (mangler vækst-data)")
+        else:
+            details.append("ℹ️ PEG beregning fejlede – tjek vækst-estimater manuelt")
     
     # P/B ratio
     if pb is not None and pb > 0:

@@ -4,7 +4,89 @@ Beregner fair value score baseret på klassiske værdiansættelses-modeller
 """
 
 import yfinance as yf
-from typing import Dict, Optional
+import pandas as pd
+from typing import Dict, Optional, Tuple
+
+
+def get_peg_ratio(ticker: yf.Ticker, info: dict) -> Tuple[Optional[float], str]:
+    """
+    Henter PEG ratio med fallback-kæde for bedst mulig datakvalitet.
+    
+    Fallback-kæde:
+    1. Yahoo Finance pegRatio (forward PEG)
+    2. Beregn fra forward P/E og forventet vækst
+    3. Beregn fra trailing P/E og historisk vækst (med disclaimer)
+    4. Return None hvis ingen data
+    
+    Returns:
+        Tuple[peg_value, data_source]
+    """
+    # 1. Forsøg direkte pegRatio fra Yahoo
+    peg = info.get("pegRatio")
+    if peg and peg > 0:
+        return peg, "Yahoo Finance"
+    
+    # 2. Beregn fra forward P/E og earnings growth
+    forward_pe = info.get("forwardPE")
+    earnings_growth = info.get("earningsGrowth")  # Forward årlig vækst
+    
+    if forward_pe and earnings_growth and earnings_growth > 0:
+        peg_calculated = forward_pe / (earnings_growth * 100)
+        return peg_calculated, "Beregnet (Forward)"
+    
+    # 3. Beregn fra trailing P/E og historisk vækst
+    trailing_pe = info.get("trailingPE")
+    earnings_quarterly_growth = info.get("earningsQuarterlyGrowth")
+    
+    if trailing_pe and earnings_quarterly_growth and earnings_quarterly_growth > 0:
+        # Annualiseret vækst
+        annual_growth = earnings_quarterly_growth * 100
+        peg_calculated = trailing_pe / annual_growth
+        return peg_calculated, "Beregnet (Historisk)"
+    
+    # 4. Forsøg at beregne vækst fra historiske earnings
+    try:
+        earnings = ticker.earnings
+        if earnings is not None and not earnings.empty and len(earnings) >= 2:
+            # Beregn CAGR fra earnings
+            first_earnings = earnings.iloc[0]["Earnings"]
+            last_earnings = earnings.iloc[-1]["Earnings"]
+            years = len(earnings) - 1
+            
+            if first_earnings > 0 and last_earnings > 0 and years > 0:
+                cagr = (pow(last_earnings / first_earnings, 1/years) - 1) * 100
+                if cagr > 0 and trailing_pe:
+                    peg_calculated = trailing_pe / cagr
+                    return peg_calculated, "Beregnet (CAGR)"
+    except Exception:
+        pass
+    
+    return None, "Ikke Tilgængelig"
+
+
+def get_forward_growth(ticker: yf.Ticker, info: dict) -> Optional[float]:
+    """
+    Henter fremtidig vækst estimat med fallback.
+    
+    Returns:
+        Growth rate i % eller None
+    """
+    # 1. Direkte earnings growth (analyst estimates)
+    earnings_growth = info.get("earningsGrowth")
+    if earnings_growth and earnings_growth > 0:
+        return earnings_growth * 100
+    
+    # 2. Revenue growth som proxy
+    revenue_growth = info.get("revenueGrowth")
+    if revenue_growth and revenue_growth > 0:
+        return revenue_growth * 100
+    
+    # 3. Quarterly earnings growth annualiseret
+    earnings_quarterly_growth = info.get("earningsQuarterlyGrowth")
+    if earnings_quarterly_growth and earnings_quarterly_growth > 0:
+        return earnings_quarterly_growth * 100
+    
+    return None
 
 
 def analyze_fundamentals(symbol: str, industry_pe: float = 20.0) -> Dict:
@@ -22,11 +104,17 @@ def analyze_fundamentals(symbol: str, industry_pe: float = 20.0) -> Dict:
         ticker = yf.Ticker(symbol)
         info = ticker.info
         
-        # Hent nøgletal
+        # Hent basis nøgletal
         pe = info.get("trailingPE")
         pb = info.get("priceToBook")
-        peg = info.get("pegRatio")
-        growth = info.get("earningsQuarterlyGrowth", 0) * 100 if info.get("earningsQuarterlyGrowth") else 0
+        
+        # Forbedret PEG ratio acquisition
+        peg, peg_source = get_peg_ratio(ticker, info)
+        
+        # Forbedret growth estimate
+        growth = get_forward_growth(ticker, info)
+        if growth is None:
+            growth = info.get("earningsQuarterlyGrowth", 0) * 100 if info.get("earningsQuarterlyGrowth") else 0
         
         # Beregn fair value score
         score = calculate_fair_value_score(pe, industry_pe, peg, pb, growth)
@@ -38,6 +126,7 @@ def analyze_fundamentals(symbol: str, industry_pe: float = 20.0) -> Dict:
             "pe": pe,
             "pb": pb,
             "peg": peg,
+            "peg_source": peg_source,  # Ny: viser datakilde
             "growth": growth,
             "industry_pe": industry_pe,
             "current_price": info.get("currentPrice", info.get("regularMarketPrice")),
@@ -54,6 +143,7 @@ def analyze_fundamentals(symbol: str, industry_pe: float = 20.0) -> Dict:
             "pe": None,
             "pb": None,
             "peg": None,
+            "peg_source": "Error",
             "growth": 0
         }
 
