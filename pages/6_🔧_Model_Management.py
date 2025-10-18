@@ -424,25 +424,37 @@ with tab1:
             val_data = st.session_state.validation_data
             result = val_data.get('result')
             
-            if result:
+            if result and isinstance(result, dict):
                 st.success("🎉 Model trænet og gemt!")
                 
                 # Display results
                 st.markdown("### 📊 Training Resultater")
                 
-                col_a, col_b, col_c = st.columns(3)
-                with col_a:
-                    st.metric("Training MAE", f"${result['metadata']['train_mae']:.2f}")
-                with col_b:
-                    st.metric("Training RMSE", f"${result['metadata']['train_rmse']:.2f}")
-                with col_c:
-                    st.metric("Training Samples", result['metadata']['training_samples'])
+                # Safely get metadata
+                metadata = result.get('metadata', {})
                 
-                # Show metadata
-                with st.expander("📋 Model Metadata"):
-                    st.json(result['metadata'])
+                if metadata:
+                    col_a, col_b, col_c = st.columns(3)
+                    with col_a:
+                        train_mae = metadata.get('train_mae', 0)
+                        st.metric("Training MAE", f"${train_mae:.2f}")
+                    with col_b:
+                        train_rmse = metadata.get('train_rmse', 0)
+                        st.metric("Training RMSE", f"${train_rmse:.2f}")
+                    with col_c:
+                        train_samples = metadata.get('training_samples', 0)
+                        st.metric("Training Samples", train_samples)
+                    
+                    # Show metadata
+                    with st.expander("📋 Model Metadata"):
+                        st.json(metadata)
+                else:
+                    st.warning("⚠️ Metadata not available")
                 
-                st.info(f"💾 Model gemt: `{result['filepath']}`")
+                # Show filepath if available
+                filepath = result.get('filepath')
+                if filepath:
+                    st.info(f"💾 Model gemt: `{filepath}`")
                 
                 # Reset button
                 if st.button("🔄 Train Another Model", type="primary"):
@@ -866,7 +878,9 @@ with tab3:
             with col2:
                 st.metric("Symbol", selected_model_info['symbol'])
             with col3:
-                st.metric("Training MAE", f"${selected_model_info['metadata'].get('train_mae', 0):.2f}")
+                metadata = selected_model_info.get('metadata', {})
+                train_mae = metadata.get('train_mae', 0) if metadata else 0
+                st.metric("Training MAE", f"${train_mae:.2f}")
         
         # Data for prediction
         st.markdown("### 📊 Prediction Data")
@@ -903,10 +917,13 @@ with tab3:
                     model_package = load_model(selected_model_info['filepath'])
                     
                     if model_package:
+                        metadata = selected_model_info.get('metadata', {})
+                        horizon = metadata.get('horizon', 1) if metadata else 1
+                        
                         result = predict_with_saved_model(
                             model_package, 
                             data, 
-                            horizon=selected_model_info['metadata'].get('horizon', 1)
+                            horizon=horizon
                         )
                         
                         if result:
