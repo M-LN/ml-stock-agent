@@ -237,12 +237,24 @@ with tab1:
         if 'validation_data' not in st.session_state:
             st.session_state.validation_data = None
         
-        # Train button
-        train_button = st.button("🚀 Analyze & Prepare Training", type="primary", use_container_width=True)
+        # Show current state for debugging
+        st.caption(f"Current state: {st.session_state.training_state}")
+        
+        # Train button - only show if idle or completed
+        if st.session_state.training_state in ['idle', 'completed']:
+            train_button = st.button("🚀 Analyze & Prepare Training", type="primary", use_container_width=True)
+        else:
+            train_button = False
+            st.info(f"State: {st.session_state.training_state}")
     
     with col2:
         # Handle training state machine
-        if train_button and st.session_state.training_state == 'idle':
+        if train_button and st.session_state.training_state in ['idle', 'completed']:
+            st.info("🔄 Starting analysis...")
+            
+            # Reset validation data when starting fresh
+            st.session_state.validation_data = None
+            
             # Step 1: Fetch data and validate
             with st.spinner(f"📥 Henter data for {train_symbol}..."):
                 try:
@@ -289,6 +301,11 @@ with tab1:
             }
             st.session_state.training_state = 'validated'
             st.rerun()
+        
+        elif train_button:
+            # Button clicked but wrong state
+            st.error(f"⚠️ Cannot analyze - current state is '{st.session_state.training_state}'. Expected 'idle' or 'completed'.")
+            st.info("Click the '🔄 Reset' button or '🔄 Train Another Model' button to reset the workflow.")
         
         # Display validation report if in validated state
         if st.session_state.training_state == 'validated' and st.session_state.validation_data:
@@ -494,28 +511,6 @@ with tab1:
                         st.session_state.validation_data = None
                         # User can manually switch to other tabs
                         st.info("👉 Switch to 'Gem Modeller' tab to see all models")
-        
-        # Check if parameters changed - reset workflow if in validated/training state (but NOT completed)
-        if st.session_state.training_state in ['validated', 'training'] and st.session_state.validation_data:
-            val_data = st.session_state.validation_data
-            
-            # Debug: Show current state
-            with st.expander("🔍 Debug: Current State", expanded=False):
-                st.write(f"Training State: {st.session_state.training_state}")
-                st.write(f"Stored params: Symbol={val_data.get('symbol')}, Model={val_data.get('model_type')}, Period={val_data.get('period')}, Version={val_data.get('version_code')}")
-                st.write(f"Current params: Symbol={train_symbol}, Model={model_type}, Period={train_period}, Version={version_code}")
-            
-            params_changed = (
-                val_data.get('symbol') != train_symbol or
-                val_data.get('model_type') != model_type or
-                val_data.get('period') != train_period or
-                val_data.get('version_code') != version_code
-            )
-            if params_changed:
-                st.warning("⚠️ Parameters changed. Please re-analyze data.")
-                st.session_state.training_state = 'idle'
-                st.session_state.validation_data = None
-                # Don't continue showing old validation report
         
         # Show instructions only when idle
         if st.session_state.training_state == 'idle':
