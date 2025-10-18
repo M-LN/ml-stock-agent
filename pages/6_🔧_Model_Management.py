@@ -49,7 +49,8 @@ if deployed_models:
     st.success(f"🚀 **{len(deployed_models)} deployed model(ler)** er aktive i ML Forecast og Agent Recommendations")
     with st.expander("📋 Se deployed modeller"):
         for m in deployed_models:
-            st.markdown(f"- **{m['model_type'].upper()}** ({m['symbol']}) - {m['timestamp'][:8]}")
+            timestamp = m.get('timestamp', 'N/A')[:8] if m.get('timestamp') else 'N/A'
+            st.markdown(f"- **{m['model_type'].upper()}** ({m['symbol']}) - {timestamp}")
 else:
     st.info("💡 Ingen deployed modeller. Træn og deploy modeller for at bruge dem i forecasts og agent.")
 
@@ -737,7 +738,8 @@ with tab2:
                                 if description:
                                     st.caption(description)
                                 st.markdown(f"Val MAE: **${val_mae:.2f}**")
-                                st.caption(f"📅 {model_info['timestamp']}")
+                                timestamp = model_info.get('timestamp', 'N/A')
+                                st.caption(f"📅 {timestamp}")
                             
                             with col_b:
                                 # Deployment
@@ -777,13 +779,14 @@ with tab2:
                 
                 # Display models in cards
                 for i, model_info in enumerate(saved_models):
-                    with st.expander(f"🤖 {model_info['model_type'].upper()} - {model_info['symbol']} ({model_info['timestamp']})"):
+                    timestamp = model_info.get('timestamp', 'N/A')
+                    with st.expander(f"🤖 {model_info['model_type'].upper()} - {model_info['symbol']} ({timestamp})"):
                         col_a, col_b = st.columns([2, 1])
                 
                 with col_a:
                     st.markdown(f"**Model Type:** {model_info['model_type'].upper()}")
                     st.markdown(f"**Symbol:** {model_info['symbol']}")
-                    st.markdown(f"**Timestamp:** {model_info['timestamp']}")
+                    st.markdown(f"**Timestamp:** {timestamp}")
                     
                     if 'metadata' in model_info:
                         meta = model_info['metadata']
@@ -849,7 +852,7 @@ with tab3:
         st.info("📭 Ingen gemte modeller. Træn først en model i 'Træn Nye Modeller' tab.")
     else:
         # Model selection
-        model_options = [f"{m['model_type'].upper()} - {m['symbol']} ({m['timestamp']})" for m in all_models]
+        model_options = [f"{m['model_type'].upper()} - {m['symbol']} ({m.get('timestamp', 'N/A')})" for m in all_models]
         selected_idx = st.selectbox("Vælg model", range(len(model_options)), 
                                     format_func=lambda x: model_options[x])
         
@@ -972,7 +975,7 @@ with tab4:
             st.info("📭 Ingen gemte modeller. Træn en model først i 'Træn Nye Modeller' tab.")
         else:
             # Model selector
-            model_options = [f"{m['timestamp']} - {m['model_type']} ({m['symbol']})" for m in all_models]
+            model_options = [f"{m.get('timestamp', 'N/A')} - {m['model_type']} ({m['symbol']})" for m in all_models]
             selected_model_str = st.selectbox("📂 Vælg model til analyse", model_options)
             selected_model_id = selected_model_str.split(" - ")[0]
             
@@ -1307,7 +1310,7 @@ with tab6:
                 st.warning(f"⚠️ No models found for {drift_symbol}")
             else:
                 model_options = [
-                    f"{m['model_type'].upper()} - {m['timestamp'][:8]}"
+                    f"{m['model_type'].upper()} - {m.get('timestamp', 'N/A')[:8]}"
                     for m in symbol_models
                 ]
                 
@@ -1512,7 +1515,7 @@ with tab7:
                 else:
                     # Model A
                     model_a_options = [
-                        f"{m['model_type'].upper()} - {m['timestamp'][:8]}"
+                        f"{m['model_type'].upper()} - {m.get('timestamp', 'N/A')[:8]}"
                         for m in symbol_models
                     ]
                     
