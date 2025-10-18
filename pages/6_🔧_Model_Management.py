@@ -508,8 +508,17 @@ with tab1:
                                 st.json(metadata)
                         else:
                             st.info("ℹ️ Model loaded but metadata not available in expected format")
-                            if model_package:
-                                st.write("Available keys:", list(model_package.keys()) if isinstance(model_package, dict) else "Not a dict")
+                            st.write("**Debug Info:**")
+                            st.write(f"- model_package type: {type(model_package)}")
+                            st.write(f"- model_package is dict: {isinstance(model_package, dict)}")
+                            if isinstance(model_package, dict):
+                                st.write(f"- Available keys: {list(model_package.keys())}")
+                                st.write(f"- Has 'metadata' key: {'metadata' in model_package}")
+                                if 'metadata' in model_package:
+                                    st.write(f"- Metadata type: {type(model_package['metadata'])}")
+                                    st.write(f"- Metadata value: {model_package['metadata']}")
+                            with st.expander("Full model_package content"):
+                                st.write(model_package)
                     except Exception as e:
                         st.warning(f"⚠️ Could not load model metadata: {str(e)}")
                         import traceback
