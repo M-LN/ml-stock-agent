@@ -434,19 +434,41 @@ with tab1:
                 metadata = result.get('metadata', {})
                 
                 if metadata:
-                    col_a, col_b, col_c = st.columns(3)
-                    with col_a:
+                    # Main metrics
+                    col1, col2, col3, col4 = st.columns(4)
+                    with col1:
                         train_mae = metadata.get('train_mae', 0)
                         st.metric("Training MAE", f"${train_mae:.2f}")
-                    with col_b:
+                    with col2:
+                        val_mae = metadata.get('val_mae', 0)
+                        st.metric("Validation MAE", f"${val_mae:.2f}", 
+                                 delta=f"{((val_mae - train_mae) / train_mae * 100):.1f}%" if train_mae > 0 else None,
+                                 delta_color="inverse")
+                    with col3:
                         train_rmse = metadata.get('train_rmse', 0)
                         st.metric("Training RMSE", f"${train_rmse:.2f}")
-                    with col_c:
+                    with col4:
+                        val_rmse = metadata.get('val_rmse', 0)
+                        st.metric("Validation RMSE", f"${val_rmse:.2f}",
+                                 delta=f"{((val_rmse - train_rmse) / train_rmse * 100):.1f}%" if train_rmse > 0 else None,
+                                 delta_color="inverse")
+                    
+                    # Additional info
+                    col5, col6 = st.columns(2)
+                    with col5:
                         train_samples = metadata.get('training_samples', 0)
                         st.metric("Training Samples", train_samples)
+                    with col6:
+                        val_samples = metadata.get('validation_samples', 0)
+                        st.metric("Validation Samples", val_samples)
                     
-                    # Show metadata
-                    with st.expander("📋 Model Metadata"):
+                    # Model version info
+                    model_version = metadata.get('model_version', 'v1')
+                    if 'v2' in str(model_version):
+                        st.info("✨ This is a **v2 Enhanced Model** with 67 technical indicators")
+                    
+                    # Show detailed metadata
+                    with st.expander("📋 Full Model Metadata"):
                         st.json(metadata)
                 else:
                     st.warning("⚠️ Metadata not available")
@@ -454,16 +476,25 @@ with tab1:
                 # Show filepath if available
                 filepath = result.get('filepath')
                 if filepath:
-                    st.info(f"💾 Model gemt: `{filepath}`")
+                    st.success(f"💾 **Model saved successfully!**")
+                    st.code(filepath, language=None)
                 
-                # Reset button
-                if st.button("🔄 Train Another Model", type="primary"):
-                    st.session_state.training_state = 'idle'
-                    st.session_state.validation_data = None
-                    st.rerun()
+                # Action buttons
+                col_btn1, col_btn2 = st.columns(2)
+                with col_btn1:
+                    if st.button("🔄 Train Another Model", type="primary", use_container_width=True):
+                        st.session_state.training_state = 'idle'
+                        st.session_state.validation_data = None
+                        st.rerun()
+                with col_btn2:
+                    if st.button("📊 View All Models", use_container_width=True):
+                        st.session_state.training_state = 'idle'
+                        st.session_state.validation_data = None
+                        # User can manually switch to other tabs
+                        st.info("👉 Switch to 'Gem Modeller' tab to see all models")
         
-        # Check if parameters changed - reset workflow if in validated/training/completed state
-        if st.session_state.training_state != 'idle' and st.session_state.validation_data:
+        # Check if parameters changed - reset workflow if in validated/training state (but NOT completed)
+        if st.session_state.training_state in ['validated', 'training'] and st.session_state.validation_data:
             val_data = st.session_state.validation_data
             params_changed = (
                 val_data['symbol'] != train_symbol or
