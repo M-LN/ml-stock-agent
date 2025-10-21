@@ -51,6 +51,112 @@ if 'price_cache' not in st.session_state:
 if 'performance_snapshots' not in st.session_state:
     st.session_state.performance_snapshots = []  # Historical portfolio snapshots
 
+if 'portfolio_currency' not in st.session_state:
+    st.session_state.portfolio_currency = 'DKK'  # Default currency
+
+if 'exchange_rates' not in st.session_state:
+    st.session_state.exchange_rates = {}  # Cache for exchange rates
+
+
+# ===== CURRENCY CONVERSION FUNCTIONS =====
+def fetch_exchange_rate(from_currency: str, to_currency: str) -> float:
+    """Fetch exchange rate from Yahoo Finance"""
+    if from_currency == to_currency:
+        return 1.0
+    
+    # Check cache (valid for 1 hour)
+    cache_key = f"{from_currency}_{to_currency}_{datetime.now().strftime('%Y%m%d_%H')}"
+    if cache_key in st.session_state.exchange_rates:
+        return st.session_state.exchange_rates[cache_key]
+    
+    try:
+        # Yahoo Finance format for currency pairs
+        pair = f"{from_currency}{to_currency}=X"
+        ticker = yf.Ticker(pair)
+        hist = ticker.history(period="1d")
+        
+        if hist.empty:
+            st.warning(f"⚠️ Could not fetch {from_currency}/{to_currency} rate, using 1.0")
+            return 1.0
+        
+        rate = float(hist['Close'].iloc[-1])
+        
+        # Cache the result
+        st.session_state.exchange_rates[cache_key] = rate
+        return rate
+        
+    except Exception as e:
+        st.warning(f"⚠️ Error fetching exchange rate {from_currency}/{to_currency}: {e}")
+        return 1.0
+
+
+def get_currency_symbol(currency: str) -> str:
+    """Get currency symbol for display"""
+    symbols = {
+        'DKK': 'kr.',
+        'USD': '$',
+        'EUR': '€',
+        'GBP': '£',
+        'SEK': 'kr',
+        'NOK': 'kr',
+        'CHF': 'CHF',
+        'JPY': '¥',
+        'CAD': 'C$',
+        'AUD': 'A$'
+    }
+    return symbols.get(currency, currency)
+
+
+def detect_stock_currency(symbol: str, info: Dict = None) -> str:
+    """Detect currency for a stock symbol"""
+    # Try to get from info if provided
+    if info and 'currency' in info:
+        return info['currency'].upper()
+    
+    # Fallback: Common patterns
+    if symbol.endswith('.CO'):  # Copenhagen (Denmark)
+        return 'DKK'
+    elif symbol.endswith('.ST'):  # Stockholm (Sweden)
+        return 'SEK'
+    elif symbol.endswith('.OL'):  # Oslo (Norway)
+        return 'NOK'
+    elif symbol.endswith('.L'):  # London (UK)
+        return 'GBP'
+    elif symbol.endswith('.PA'):  # Paris (France)
+        return 'EUR'
+    elif symbol.endswith('.DE'):  # Frankfurt (Germany)
+        return 'EUR'
+    elif symbol.endswith('.MI'):  # Milan (Italy)
+        return 'EUR'
+    elif symbol.endswith('.AS'):  # Amsterdam (Netherlands)
+        return 'EUR'
+    else:
+        # Default to USD for US stocks
+        return 'USD'
+
+
+def convert_to_portfolio_currency(amount: float, from_currency: str, portfolio_currency: str) -> float:
+    """Convert amount from one currency to portfolio currency"""
+    if from_currency == portfolio_currency:
+        return amount
+    
+    rate = fetch_exchange_rate(from_currency, portfolio_currency)
+    return amount * rate
+
+
+def format_currency(amount: float, currency: str = None) -> str:
+    """Format amount with currency symbol"""
+    if currency is None:
+        currency = st.session_state.portfolio_currency
+    
+    symbol = get_currency_symbol(currency)
+    
+    # Format based on currency
+    if currency == 'DKK' or currency in ['SEK', 'NOK']:
+        return f"{amount:,.2f} {symbol}"
+    else:
+        return f"{symbol}{amount:,.2f}"
+
 
 # ===== LIVE PRICE FUNCTIONS =====
 def fetch_live_price(symbol: str) -> Dict:
@@ -73,6 +179,9 @@ def fetch_live_price(symbol: str) -> Dict:
         change = current_price - prev_close
         change_pct = (change / prev_close * 100) if prev_close != 0 else 0
         
+        # Detect currency
+        currency = detect_stock_currency(symbol, info)
+        
         result = {
             'success': True,
             'symbol': symbol,
@@ -83,6 +192,7 @@ def fetch_live_price(symbol: str) -> Dict:
             'market_cap': info.get('marketCap', 0),
             'pe_ratio': info.get('trailingPE', None),
             'sector': info.get('sector', 'Unknown'),
+            'currency': currency,
             'timestamp': datetime.now().isoformat()
         }
         
@@ -107,6 +217,7 @@ def update_portfolio_prices(positions: List[Dict]) -> List[Dict]:
             pos_copy['current_price'] = price_data['price']
             pos_copy['price_change'] = price_data['change']
             pos_copy['price_change_pct'] = price_data['change_pct']
+            pos_copy['currency'] = price_data['currency']
             pos_copy['last_updated'] = price_data['timestamp']
             
             # Update sector if not set or different
@@ -374,8 +485,19 @@ def run_monte_carlo_simulation(
 
 # Helper functions
 def calculate_portfolio_value(positions: List[Dict]) -> float:
-    """Calculate total portfolio value"""
-    return sum(pos['shares'] * pos['current_price'] for pos in positions)
+    """Calculate total portfolio value in portfolio currency"""
+    total = 0
+    portfolio_currency = st.session_state.portfolio_currency
+    
+    for pos in positions:
+        value = pos['shares'] * pos['current_price']
+        position_currency = pos.get('currency', 'USD')
+        
+        # Convert to portfolio currency
+        converted_value = convert_to_portfolio_currency(value, position_currency, portfolio_currency)
+        total += converted_value
+    
+    return total
 
 
 def calculate_position_percentage(position: Dict, total_value: float) -> float:
@@ -636,7 +758,7 @@ with tab1:
         with add_col4:
             new_price = st.number_input("Current Price ($)", min_value=0.0, step=0.01, key="new_price")
         
-        add_col5, add_col6, add_col7 = st.columns(3)
+        add_col5, add_col6, add_col7, add_col8 = st.columns(4)
         
         with add_col5:
             new_sector = st.selectbox(
@@ -653,6 +775,14 @@ with tab1:
             )
         
         with add_col7:
+            new_currency = st.selectbox(
+                "Currency",
+                ["USD", "DKK", "EUR", "GBP", "SEK", "NOK", "CHF"],
+                index=1 if st.session_state.portfolio_currency == "DKK" else 0,
+                key="new_currency"
+            )
+        
+        with add_col8:
             st.write("")  # Spacing
             st.write("")
             if st.button("➕ Add Position", use_container_width=True):
@@ -662,26 +792,40 @@ with tab1:
                         'shares': new_shares,
                         'avg_cost': new_cost,
                         'current_price': new_price,
+                        'currency': new_currency,
                         'sector': new_sector,
                         'asset_class': new_asset_class,
                         'added_date': datetime.now().strftime("%Y-%m-%d")
                     })
-                    st.success(f"✅ Added {new_shares} shares of {new_symbol.upper()}")
+                    st.success(f"✅ Added {new_shares} shares of {new_symbol.upper()} ({new_currency})")
                     st.rerun()
                 else:
                     st.error("Please fill all fields with valid values")
     
     with col2:
         st.subheader("Portfolio Summary")
+        
+        # Currency display
+        portfolio_currency = st.session_state.portfolio_currency
+        currency_symbol = get_currency_symbol(portfolio_currency)
+        st.caption(f"💱 Portfolio Currency: {portfolio_currency}")
+        
         total_value = calculate_portfolio_value(st.session_state.portfolio['positions'])
-        st.metric("Total Value", f"${total_value:,.2f}")
+        st.metric("Total Value", format_currency(total_value, portfolio_currency))
         st.metric("Positions", len(st.session_state.portfolio['positions']))
         
         if total_value > 0:
-            total_cost = sum(pos['shares'] * pos['avg_cost'] for pos in st.session_state.portfolio['positions'])
-            total_gain = total_value - total_cost
-            gain_pct = (total_gain / total_cost * 100) if total_cost > 0 else 0
-            st.metric("Total Gain/Loss", f"${total_gain:,.2f}", f"{gain_pct:+.2f}%")
+            # Calculate total cost in portfolio currency
+            total_cost_converted = 0
+            for pos in st.session_state.portfolio['positions']:
+                cost = pos['shares'] * pos['avg_cost']
+                position_currency = pos.get('currency', 'USD')
+                cost_converted = convert_to_portfolio_currency(cost, position_currency, portfolio_currency)
+                total_cost_converted += cost_converted
+            
+            total_gain = total_value - total_cost_converted
+            gain_pct = (total_gain / total_cost_converted * 100) if total_cost_converted > 0 else 0
+            st.metric("Total Gain/Loss", format_currency(total_gain, portfolio_currency), f"{gain_pct:+.2f}%")
     
     # Display positions
     if st.session_state.portfolio['positions']:
@@ -689,21 +833,36 @@ with tab1:
         
         positions_data = []
         total_value = calculate_portfolio_value(st.session_state.portfolio['positions'])
+        portfolio_currency = st.session_state.portfolio_currency
         
         for i, pos in enumerate(st.session_state.portfolio['positions']):
-            market_value = pos['shares'] * pos['current_price']
-            cost_basis = pos['shares'] * pos['avg_cost']
+            position_currency = pos.get('currency', 'USD')
+            
+            # Original currency values
+            market_value_original = pos['shares'] * pos['current_price']
+            cost_basis_original = pos['shares'] * pos['avg_cost']
+            
+            # Convert to portfolio currency
+            market_value = convert_to_portfolio_currency(market_value_original, position_currency, portfolio_currency)
+            cost_basis = convert_to_portfolio_currency(cost_basis_original, position_currency, portfolio_currency)
+            
             gain_loss = market_value - cost_basis
             gain_loss_pct = (gain_loss / cost_basis * 100) if cost_basis > 0 else 0
             allocation_pct = calculate_position_percentage(pos, total_value)
             
+            # Format with original currency in parentheses if different
+            price_display = format_currency(pos['current_price'], position_currency)
+            if position_currency != portfolio_currency:
+                price_display += f" ({format_currency(pos['current_price'], position_currency)})"
+            
             positions_data.append({
                 'Symbol': pos['symbol'],
+                'Currency': position_currency,
                 'Shares': f"{pos['shares']:.2f}",
-                'Avg Cost': f"${pos['avg_cost']:.2f}",
-                'Current Price': f"${pos['current_price']:.2f}",
-                'Market Value': f"${market_value:,.2f}",
-                'Gain/Loss': f"${gain_loss:,.2f}",
+                'Avg Cost': format_currency(pos['avg_cost'], position_currency),
+                'Current Price': format_currency(pos['current_price'], position_currency),
+                f'Market Value ({portfolio_currency})': format_currency(market_value, portfolio_currency),
+                'Gain/Loss': format_currency(gain_loss, portfolio_currency),
                 'Gain/Loss %': f"{gain_loss_pct:+.2f}%",
                 'Allocation %': f"{allocation_pct:.1f}%",
                 'Sector': pos['sector'],
@@ -716,6 +875,33 @@ with tab1:
         # Display without index column
         display_df = df_positions.drop('Index', axis=1)
         st.dataframe(display_df, use_container_width=True)
+        
+        # Currency breakdown
+        if len(set(pos.get('currency', 'USD') for pos in st.session_state.portfolio['positions'])) > 1:
+            st.subheader("💱 Currency Exposure")
+            
+            currency_exposure = {}
+            for pos in st.session_state.portfolio['positions']:
+                position_currency = pos.get('currency', 'USD')
+                market_value_original = pos['shares'] * pos['current_price']
+                market_value_converted = convert_to_portfolio_currency(market_value_original, position_currency, portfolio_currency)
+                
+                if position_currency not in currency_exposure:
+                    currency_exposure[position_currency] = 0
+                currency_exposure[position_currency] += market_value_converted
+            
+            # Display as percentages
+            exposure_data = []
+            for curr, value in sorted(currency_exposure.items(), key=lambda x: x[1], reverse=True):
+                pct = (value / total_value * 100) if total_value > 0 else 0
+                exposure_data.append({
+                    'Currency': f"{curr} {get_currency_symbol(curr)}",
+                    'Value': format_currency(value, portfolio_currency),
+                    'Percentage': f"{pct:.1f}%"
+                })
+            
+            df_exposure = pd.DataFrame(exposure_data)
+            st.dataframe(df_exposure, use_container_width=True)
         
         # Remove position button
         st.subheader("Remove Position")
@@ -1667,6 +1853,30 @@ with tab8:
 with st.sidebar:
     st.header("Portfolio Settings")
     
+    # Currency selector
+    st.subheader("💱 Portfolio Currency")
+    selected_currency = st.selectbox(
+        "Base Currency",
+        ["DKK", "USD", "EUR", "GBP", "SEK", "NOK", "CHF", "JPY", "CAD", "AUD"],
+        index=["DKK", "USD", "EUR", "GBP", "SEK", "NOK", "CHF", "JPY", "CAD", "AUD"].index(st.session_state.portfolio_currency),
+        help="All portfolio values will be displayed in this currency"
+    )
+    
+    if selected_currency != st.session_state.portfolio_currency:
+        st.session_state.portfolio_currency = selected_currency
+        st.success(f"✅ Currency changed to {selected_currency} {get_currency_symbol(selected_currency)}")
+        st.rerun()
+    
+    # Show current exchange rates
+    with st.expander("📊 Current Exchange Rates"):
+        st.caption(f"Rates to {st.session_state.portfolio_currency}")
+        for curr in ["USD", "EUR", "GBP", "DKK", "SEK", "NOK"]:
+            if curr != st.session_state.portfolio_currency:
+                rate = fetch_exchange_rate(curr, st.session_state.portfolio_currency)
+                st.write(f"{curr} → {st.session_state.portfolio_currency}: {rate:.4f}")
+    
+    st.markdown("---")
+    
     # Risk profile display
     st.metric("Risk Profile", st.session_state.portfolio['risk_profile'].title())
     st.metric("Max Position Size", f"{st.session_state.portfolio['max_position_size']}%")
@@ -1680,6 +1890,7 @@ with st.sidebar:
         # Save to file
         portfolio_data = {
             'portfolio': st.session_state.portfolio,
+            'portfolio_currency': st.session_state.portfolio_currency,
             'performance_snapshots': st.session_state.performance_snapshots,
             'saved_at': datetime.now().isoformat()
         }
@@ -1708,6 +1919,10 @@ with st.sidebar:
                     portfolio_data = json.load(f)
                 
                 st.session_state.portfolio = portfolio_data['portfolio']
+                
+                # Load currency preference if available
+                if 'portfolio_currency' in portfolio_data:
+                    st.session_state.portfolio_currency = portfolio_data['portfolio_currency']
                 
                 # Load performance snapshots if available
                 if 'performance_snapshots' in portfolio_data:
